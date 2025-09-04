@@ -228,50 +228,42 @@ function updatePortalPosition() {
 
 function onPickerBeforeEnter(el: Element) {
     const node = el as HTMLElement
-    node.style.overflow = 'hidden'
-    node.style.height = '0px'
     node.style.opacity = '0'
     node.style.filter = 'blur(4px)'
+    node.style.transform = 'translateY(-8px)'
 }
 
 function onPickerEnter(el: Element, done: () => void) {
     const node = el as HTMLElement
-    const h = node.scrollHeight
-    node.style.transition = 'height .22s ease, opacity .22s ease, filter .22s ease'
-    // force reflow
-    void node.offsetHeight
+    node.style.transition = 'opacity .22s ease, filter .22s ease, transform .22s ease'
     requestAnimationFrame(() => {
-        node.style.height = h + 'px'
         node.style.opacity = '1'
         node.style.filter = 'blur(0)'
+        node.style.transform = 'translateY(0)'
         setTimeout(done, 240)
     })
 }
 
 function onPickerAfterEnter(el: Element) {
     const node = el as HTMLElement
-    node.style.height = 'auto'
-    node.style.overflow = ''
     node.style.transition = ''
+    node.style.transform = ''
 }
 
 function onPickerBeforeLeave(el: Element) {
     const node = el as HTMLElement
-    node.style.overflow = 'hidden'
-    node.style.height = node.scrollHeight + 'px'
     node.style.opacity = '1'
     node.style.filter = 'blur(0)'
+    node.style.transform = 'translateY(0)'
 }
 
 function onPickerLeave(el: Element, done: () => void) {
     const node = el as HTMLElement
-    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease'
-    // force reflow
-    void node.offsetHeight
+    node.style.transition = 'opacity .2s ease, filter .2s ease, transform .2s ease'
     requestAnimationFrame(() => {
-        node.style.height = '0px'
         node.style.opacity = '0'
         node.style.filter = 'blur(4px)'
+        node.style.transform = 'translateY(-8px)'
         setTimeout(done, 220)
     })
 }
@@ -426,7 +418,6 @@ function onEdit() {
     border-radius: 8px;
     background: var(--surface);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-    overflow: clip;
 }
 
 .platform-picker.portal {

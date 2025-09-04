@@ -14,6 +14,19 @@
               <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
               </iframe>
             </div>
+            <div v-else-if="isChatConfigured(entry)" class="placeholder placeholder-configured">
+              <div class="placeholder-content">
+                <div class="platform-logo">
+                  <Icon :name="getPlatformIcon(entry.platform!)" />
+                  <div class="username">{{ getDisplayUsername(entry) }}</div>
+                </div>
+                <div class="placeholder-text">there will be {{ getDisplayUsername(entry) }}'s chat</div>
+                <button class="reload-btn" @click="reloadChat(entry)" :disabled="reloadingChats.has(entry.id)" :title="reloadingChats.has(entry.id) ? 'Loading...' : 'Refresh chat'">
+                  <Icon name="material-symbols:refresh" :class="{ spinning: reloadingChats.has(entry.id) }" />
+                  <span>{{ reloadingChats.has(entry.id) ? 'Loading...' : 'Refresh' }}</span>
+                </button>
+              </div>
+            </div>
             <div v-else-if="getEmbed(entry) && shouldUnload(entry)" class="placeholder placeholder-unloaded">Unloaded due to tab blur.</div>
             <div v-else class="placeholder">No chat configured.</div>
             <div class="frame-shield" :class="{ visible: isResizing }"></div>
@@ -59,9 +72,10 @@ const containerRef = ref<HTMLElement | null>(null)
 const widthsPercent = ref<Record<string, number>>({})
 const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
 const isBlurUnloaded = ref(false)
+const reloadingChats = ref<Set<string>>(new Set())
 let unloadTimer: number | null = null
 // visible chats comes first so other computeds can depend on it safely
-const visibleChats = computed(() => chats.value.filter(e => e.locked && getEmbed(e)))
+const visibleChats = computed(() => chats.value.filter(e => e.locked && (getEmbed(e) || isChatConfigured(e))))
 const MIN_COL = 10
 const equalWidth = computed(() => {
   const n = visibleChats.value.length || 1
@@ -270,6 +284,76 @@ function delayToMs(v: UnloadDelay): number | null {
 
 function shouldUnload(entry: ChatEntry): boolean {
   return !!(isBlurUnloaded.value && entry.platform && settings.value.unloadPlatforms.includes(entry.platform))
+}
+
+function isChatConfigured(entry: ChatEntry): boolean {
+  return !!(entry.platform && entry.parsed && Object.keys(entry.parsed).length > 0)
+}
+
+function getPlatformIcon(platform: Platform): string {
+  switch (platform) {
+    case 'twitch': return 'mdi:twitch'
+    case 'youtube': return 'mdi:youtube'
+    case 'kick': return 'simple-icons:kick'
+    default: return 'material-symbols:question-mark'
+  }
+}
+
+function getDisplayUsername(entry: ChatEntry): string {
+  if (!entry.parsed) return entry.input
+
+  switch (entry.platform) {
+    case 'twitch':
+    case 'kick':
+      return entry.parsed.channel || entry.input
+    case 'youtube':
+      if (entry.parsed.handle) return entry.parsed.handle
+      if (entry.parsed.vanity) return entry.parsed.vanity
+      if (entry.parsed.channelId) return entry.parsed.channelId
+      return entry.input
+    default:
+      return entry.input
+  }
+}
+
+async function reloadChat(entry: ChatEntry): Promise<void> {
+  if (reloadingChats.value.has(entry.id)) return
+
+  reloadingChats.value.add(entry.id)
+
+  try {
+    if (entry.platform === 'youtube') {
+      // Clear cached video ID to force fresh API request
+      const newResolvedIds = { ...resolvedYouTubeIds.value }
+      delete newResolvedIds[entry.id]
+      resolvedYouTubeIds.value = newResolvedIds
+
+      // Remove from resolving set if it exists
+      resolvingIds.delete(entry.id)
+
+      // Make fresh API request
+      const q = new URLSearchParams({ input: entry.input })
+      const url = `/api/youtube/live?${q.toString()}`
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
+
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json()
+        if (data?.videoId) {
+          resolvedYouTubeIds.value = {
+            ...resolvedYouTubeIds.value,
+            [entry.id]: { videoId: data.videoId, input: entry.input }
+          }
+        }
+      }
+    } else {
+      // For non-YouTube platforms, just reset blur state
+      isBlurUnloaded.value = false
+    }
+  } catch (error) {
+    console.error('Failed to reload chat:', error)
+  } finally {
+    reloadingChats.value.delete(entry.id)
+  }
 }
 
 function onVisibilityChange() {
@@ -491,6 +575,101 @@ body {
 
 .placeholder-unloaded {
   color: var(--muted);
+}
+
+.placeholder-configured {
+  color: var(--text);
+}
+
+.placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 20px;
+  max-width: 300px;
+}
+
+.platform-logo {
+  font-size: 3rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.platform-logo .iconify {
+  display: block;
+}
+
+.platform-logo .iconify[data-icon="mdi:twitch"] {
+  color: #9146FF;
+}
+
+.platform-logo .iconify[data-icon="mdi:youtube"] {
+  color: #FF0000;
+}
+
+.platform-logo .iconify[data-icon="simple-icons:kick"] {
+  color: #53FC18;
+}
+
+.username {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.placeholder-text {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.reload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 40px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reload-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.reload-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reload-btn .iconify {
+  font-size: 1.2rem;
+  transition: transform 0.3s ease;
+}
+
+.reload-btn .iconify.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Modal styles */

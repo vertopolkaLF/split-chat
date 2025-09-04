@@ -174,17 +174,19 @@ function onPlatformsBeforeLeave(el: Element) {
     node.style.height = node.scrollHeight + 'px'
     node.style.opacity = '1'
     node.style.filter = 'blur(0)'
+    node.style.marginTop = '0px'
 }
 
 function onPlatformsLeave(el: Element, done: () => void) {
     const node = el as HTMLElement
-    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease'
+    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease, margin-top .2s ease'
     // force reflow
     void node.offsetHeight
     requestAnimationFrame(() => {
         node.style.height = '0px'
         node.style.opacity = '0'
         node.style.filter = 'blur(4px)'
+        node.style.marginTop = '-14px'
         setTimeout(done, 220)
     })
 }
