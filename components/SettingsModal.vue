@@ -115,14 +115,19 @@ watch(localChats, (val) => {
 }, { deep: true })
 
 function addEntry() {
-    localChats.value.push({
+    const newEntry: ChatEntry = {
         id: crypto.randomUUID?.() || Math.random().toString(36).slice(2),
         input: '',
         platform: null,
         mode: 'manual',
         parsed: {},
         locked: false
-    })
+    }
+    localChats.value = [...localChats.value, newEntry]
+    // Keep display order in sync if using DnD view
+    try { displayOrder.value = [...displayOrder.value, newEntry.id] } catch { }
+    // Emit immediately so parent state updates without waiting for deep watch
+    emit('update:chats', localChats.value)
 }
 
 function removeEntry(index: number) {

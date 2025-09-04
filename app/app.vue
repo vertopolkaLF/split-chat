@@ -7,14 +7,18 @@
       </button>
 
       <!-- Full screen chats -->
-      <div class=" chats-fullscreen">
-        <div class="chat-card" v-for="entry in chats" :key="entry.id">
-          <div class="frame-wrap" v-if="getEmbed(entry)">
-            <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
-            </iframe>
+      <div class=" chats-fullscreen" ref="containerRef">
+        <template v-for="(entry, idx) in visibleChats" :key="entry.id">
+          <div class="chat-card" :style="{ flex: '0 0 ' + (normalizedWidths[entry.id] ?? equalWidth) + '%' }">
+            <div class="frame-wrap" v-if="getEmbed(entry)">
+              <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
+              </iframe>
+            </div>
+            <div v-else class="placeholder">No chat configured.</div>
+            <div class="frame-shield" :class="{ visible: isResizing }"></div>
+            <div v-if="idx < visibleChats.length - 1" class="col-resizer" @mousedown="startResize(idx, $event)" @dblclick.stop.prevent="equalizeWidths()"></div>
           </div>
-          <div v-else class="placeholder">No chat configured.</div>
-        </div>
+        </template>
       </div>
 
       <!-- Settings Modal -->
@@ -24,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { onMounted, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
 const colorMode = useColorMode()
@@ -41,11 +45,75 @@ interface ChatEntry {
 }
 
 const STORAGE_KEYS = {
-  chats: 'splitchat:chats'
+  chats: 'splitchat:chats',
+  widths: 'splitchat:widths'
 } as const
 
 const chats = ref<ChatEntry[]>([])
 const showSettings = ref(false)
+const containerRef = ref<HTMLElement | null>(null)
+const widthsPercent = ref<Record<string, number>>({})
+// visible chats comes first so other computeds can depend on it safely
+const visibleChats = computed(() => chats.value.filter(e => e.locked && getEmbed(e)))
+const MIN_COL = 10
+const equalWidth = computed(() => {
+  const n = visibleChats.value.length || 1
+  return Math.round((100 / n) * 100) / 100
+})
+const normalizedWidths = computed<Record<string, number>>(() => {
+  const ids = visibleChats.value.map(c => c.id)
+  if (!ids.length) return {}
+  // Start with known widths, clamp to MIN, assign MIN to missing
+  const w: Record<string, number> = {}
+  for (const id of ids) {
+    const v = widthsPercent.value[id]
+    if (typeof v === 'number' && isFinite(v)) w[id] = Math.max(0, v)
+    else w[id] = MIN_COL
+    if (w[id] < MIN_COL) w[id] = MIN_COL
+  }
+  // Sum and normalize to 100 while keeping >= MIN
+  let sum = ids.reduce((acc, id) => acc + (w[id] || 0), 0)
+  if (sum > 100 + 1e-6) {
+    // Reduce only the portion above MIN proportionally
+    let over = sum - 100
+    while (over > 1e-6) {
+      const adjustable = ids.filter(id => (w[id] - MIN_COL) > 1e-6)
+      if (!adjustable.length) break
+      const totalExtra = adjustable.reduce((acc, id) => acc + (w[id] - MIN_COL), 0)
+      for (const id of adjustable) {
+        const take = Math.min(w[id] - MIN_COL, (w[id] - MIN_COL) / totalExtra * over)
+        w[id] -= take
+      }
+      const newSum = ids.reduce((acc, id) => acc + w[id], 0)
+      over = newSum - 100
+    }
+  } else if (sum < 100 - 1e-6) {
+    // Scale up proportionally
+    const factor = 100 / Math.max(1e-6, sum)
+    for (const id of ids) w[id] *= factor
+  }
+  // Final rounding and fix last to 100
+  const result: Record<string, number> = {}
+  let running = 0
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    if (i === ids.length - 1) result[id] = Math.max(0, 100 - running)
+    else {
+      const rounded = Math.max(0, Math.round(w[id] * 1000) / 1000)
+      result[id] = rounded
+      running += rounded
+    }
+  }
+  return result
+})
+
+// When visible set changes, не трогаем сохранённые ширины — только обновляем список
+const prevVisibleIds = ref<string[]>([])
+watch(visibleChats, (list) => {
+  prevVisibleIds.value = list.map(c => c.id)
+}, { immediate: false })
+const resizing = ref<{ startX: number, leftId: string, rightId: string, leftStart: number, rightStart: number } | null>(null)
+const isResizing = computed(() => !!resizing.value)
 function openSettings() {
   showSettings.value = true
 }
@@ -72,6 +140,21 @@ onMounted(() => {
   } catch {
     // ignore
   }
+  // init widths equally
+  nextTick(() => {
+    const ids = visibleChats.value.map(c => c.id)
+    if (ids.length && ids.every(id => widthsPercent.value[id] == null)) {
+      const each = Math.round((100 / ids.length) * 100) / 100
+      const map: Record<string, number> = {}
+      ids.forEach((id, i) => { map[id] = i === ids.length - 1 ? 100 - each * (ids.length - 1) : each })
+      widthsPercent.value = map
+    }
+  })
+  // hydrate widths
+  try {
+    const wr = localStorage.getItem(STORAGE_KEYS.widths)
+    if (wr) widthsPercent.value = JSON.parse(wr)
+  } catch { }
 })
 
 watch(chats, (val) => {
@@ -133,7 +216,7 @@ function getEmbed(entry: ChatEntry): { url: string, title: string } | null {
     url.searchParams.set('v', videoId)
     url.searchParams.set('is_popout', '1')
     url.searchParams.set('embed_domain', parent)
-    if (colorMode.value === 'dark') url.searchParams.set('dark_theme', '1')
+    url.searchParams.set('theme', colorMode.value === 'dark' ? 'dark' : 'light')
     return { url: url.toString(), title: 'YouTube Live Chat' }
   }
   if (entry.platform === 'kick' && entry.parsed?.channel) {
@@ -141,6 +224,57 @@ function getEmbed(entry: ChatEntry): { url: string, title: string } | null {
     return { url: base, title: 'Kick Chat' }
   }
   return null
+}
+
+function startResize(index: number, ev: MouseEvent) {
+  const left = visibleChats.value[index]
+  const right = visibleChats.value[index + 1]
+  if (!left || !right) return
+  const ls = normalizedWidths.value[left.id] ?? equalWidth.value
+  const rs = normalizedWidths.value[right.id] ?? equalWidth.value
+  resizing.value = { startX: ev.clientX, leftId: left.id, rightId: right.id, leftStart: ls, rightStart: rs }
+  window.addEventListener('mousemove', onResizeMove)
+  window.addEventListener('mouseup', endResize, { once: true })
+}
+
+function onResizeMove(ev: MouseEvent) {
+  if (!resizing.value || !containerRef.value) return
+  const dx = ev.clientX - resizing.value.startX
+  const widthPx = containerRef.value.clientWidth
+  if (!widthPx) return
+  const deltaPercent = (dx / widthPx) * 100
+  let newLeft = resizing.value.leftStart + deltaPercent
+  let newRight = resizing.value.rightStart - deltaPercent
+  const min = 10
+  if (newLeft < min) { newRight -= (min - newLeft); newLeft = min }
+  if (newRight < min) { newLeft -= (min - newRight); newRight = min }
+  widthsPercent.value = { ...widthsPercent.value, [resizing.value.leftId]: newLeft, [resizing.value.rightId]: newRight }
+}
+
+function endResize() {
+  window.removeEventListener('mousemove', onResizeMove)
+  resizing.value = null
+  // persist widths
+  try { localStorage.setItem(STORAGE_KEYS.widths, JSON.stringify(widthsPercent.value)) } catch { }
+}
+
+function equalizeWidths() {
+  const ids = visibleChats.value.map(c => c.id)
+  if (!ids.length) return
+  const each = 100 / ids.length
+  const map: Record<string, number> = {}
+  let running = 0
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    if (i === ids.length - 1) map[id] = Math.max(0, 100 - running)
+    else {
+      const v = Math.round(each * 1000) / 1000
+      map[id] = v
+      running += v
+    }
+  }
+  widthsPercent.value = map
+  try { localStorage.setItem(STORAGE_KEYS.widths, JSON.stringify(widthsPercent.value)) } catch { }
 }
 </script>
 
@@ -202,7 +336,7 @@ body {
   height: 100vh;
   gap: 1px;
   background-color: #222;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
 }
 
@@ -211,7 +345,8 @@ body {
   flex-direction: column;
   height: 100%;
   border: none;
-  width: 100%;
+  position: relative;
+  user-select: none;
 }
 
 .chat-card h2 {
@@ -249,6 +384,37 @@ body {
   width: 100%;
   height: 100%;
   border: none;
+}
+
+.frame-shield {
+  position: absolute;
+  inset: 0;
+  background: #0005;
+  z-index: 4;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s ease-in-out, visibility .2s ease-in-out;
+}
+
+.frame-shield.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 5;
+}
+
+.col-resizer:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .placeholder {
