@@ -109,29 +109,44 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
     // If we have a handle, prefer resolving it precisely via search + channels(snippet.customUrl)
     if (!resolvedChannelId && handle) {
         attemptedHandleVerify = true
-        const searchUrl = new URL(base + '/search')
-        searchUrl.searchParams.set('part', 'id')
-        searchUrl.searchParams.set('q', `@${handle}`)
-        searchUrl.searchParams.set('type', 'channel')
-        searchUrl.searchParams.set('maxResults', '5')
-        searchUrl.searchParams.set('key', apiKey)
-        console.log('[api] Searching candidates for handle:', searchUrl.toString())
-        const sRes = await fetch(searchUrl)
-        if (sRes.ok) {
-            const data: any = await sRes.json()
-            const ids: string[] = (data?.items || []).map((it: any) => it?.id?.channelId).filter(Boolean)
-            if (ids.length) {
-                const chUrl = new URL(base + '/channels')
-                chUrl.searchParams.set('part', 'snippet')
-                chUrl.searchParams.set('id', ids.join(','))
-                chUrl.searchParams.set('key', apiKey)
-                console.log('[api] Verifying handle via channels(snippet):', chUrl.toString())
-                const cRes = await fetch(chUrl)
-                if (cRes.ok) {
-                    const cData: any = await cRes.json()
-                    const match = (cData?.items || []).find((it: any) => String(it?.snippet?.customUrl || '').toLowerCase() === ('@' + handle).toLowerCase())
-                    resolvedChannelId = match?.id || ids[0] || null
-                    console.log('[api] Handle resolved to channelId:', resolvedChannelId)
+        // Primary, precise resolution: channels.list with forHandle
+        const forHandleUrl = new URL(base + '/channels')
+        forHandleUrl.searchParams.set('part', 'id')
+        forHandleUrl.searchParams.set('forHandle', handle)
+        forHandleUrl.searchParams.set('key', apiKey)
+        console.log('[api] Resolving channelId via forHandle:', forHandleUrl.toString())
+        const fhRes = await fetch(forHandleUrl)
+        if (fhRes.ok) {
+            const fhData: any = await fhRes.json()
+            resolvedChannelId = fhData?.items?.[0]?.id || null
+            console.log('[api] forHandle resolved channelId:', resolvedChannelId)
+        }
+        // Fallback verification if forHandle didn't resolve
+        if (!resolvedChannelId) {
+            const searchUrl = new URL(base + '/search')
+            searchUrl.searchParams.set('part', 'id')
+            searchUrl.searchParams.set('q', `@${handle}`)
+            searchUrl.searchParams.set('type', 'channel')
+            searchUrl.searchParams.set('maxResults', '5')
+            searchUrl.searchParams.set('key', apiKey)
+            console.log('[api] Searching candidates for handle:', searchUrl.toString())
+            const sRes = await fetch(searchUrl)
+            if (sRes.ok) {
+                const data: any = await sRes.json()
+                const ids: string[] = (data?.items || []).map((it: any) => it?.id?.channelId).filter(Boolean)
+                if (ids.length) {
+                    const chUrl = new URL(base + '/channels')
+                    chUrl.searchParams.set('part', 'snippet')
+                    chUrl.searchParams.set('id', ids.join(','))
+                    chUrl.searchParams.set('key', apiKey)
+                    console.log('[api] Verifying handle via channels(snippet):', chUrl.toString())
+                    const cRes = await fetch(chUrl)
+                    if (cRes.ok) {
+                        const cData: any = await cRes.json()
+                        const match = (cData?.items || []).find((it: any) => String(it?.snippet?.customUrl || '').toLowerCase() === ('@' + handle).toLowerCase())
+                        resolvedChannelId = match?.id || null
+                        console.log('[api] Handle resolved to channelId (verified):', resolvedChannelId)
+                    }
                 }
             }
         }
