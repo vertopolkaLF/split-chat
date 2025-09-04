@@ -3,7 +3,7 @@
     <div class="app">
       <!-- Fixed settings button -->
       <button class="settings-button" @click="openSettings" title="Settings">
-        <Icon name="solar:settings-linear" />
+        <Icon name="material-symbols:settings" />
       </button>
 
       <!-- Full screen chats -->
@@ -26,44 +26,7 @@
       </div>
 
       <!-- Settings Modal -->
-      <div v-if="showSettings" class="modal-overlay" @click="closeSettings">
-        <div class="modal-content" @click.stop>
-          <div class="modal-header">
-            <h3>Настройки стримов</h3>
-            <button class="close-button" @click="closeSettings">✕</button>
-          </div>
-
-          <div class="modal-body">
-            <div class="field">
-              <label for="themeSelect">Theme</label>
-              <select id="themeSelect" v-model="colorMode.preference">
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="twitchInput">Twitch stream or channel URL</label>
-              <input id="twitchInput" type="url" v-model.trim="twitchInput" placeholder="https://www.twitch.tv/somechannel" @keydown.enter="saveTwitch" />
-              <div class="actions">
-                <button @click="saveTwitch">Save</button>
-                <button class="ghost" @click="clearTwitch" v-if="twitchInput || twitchChannel">Clear</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="youtubeInput">YouTube stream, video, channel or @handle URL</label>
-              <input id="youtubeInput" type="url" v-model.trim="youtubeInput" placeholder="https://www.youtube.com/@handle or /watch?v=... or /channel/..." @keydown.enter="saveYouTube" />
-              <div class="actions">
-                <button @click="saveYouTube" :disabled="isResolving">{{ isResolving ? 'Resolving…' : 'Save' }}</button>
-                <button class="ghost" @click="clearYouTube" v-if="youtubeInput || youtubeVideoId">Clear</button>
-                <p class="hint">If channel URL or @handle is provided, active live will be resolved via API.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SettingsModal :open="showSettings" v-model:twitchInput="twitchInput" :twitchChannel="twitchChannel" v-model:youtubeInput="youtubeInput" :youtubeVideoId="youtubeVideoId" :isResolving="isResolving" @save-twitch="saveTwitch" @clear-twitch="clearTwitch" @save-youtube="saveYouTube" @clear-youtube="clearYouTube" @close="closeSettings" />
     </div>
   </ClientOnly>
 </template>
@@ -71,6 +34,7 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { useColorMode } from '#imports'
+import SettingsModal from '../components/SettingsModal.vue'
 const colorMode = useColorMode()
 
 const STORAGE_KEYS = {
@@ -264,6 +228,8 @@ onMounted(() => {
 /* Reset and base styles */
 * {
   box-sizing: border-box;
+  font-family: "Inter", "Roboto", "Helvetica Neue", "Arial", "Noto Sans", sans-serif;
+  margin: 0;
 }
 
 html,
@@ -272,6 +238,7 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
+  font-size: 16px;
 }
 
 /* Light theme variables */
@@ -326,7 +293,7 @@ body {
 .chat-card h2 {
   margin: 0;
   padding: 12px 16px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -416,17 +383,64 @@ body {
   padding: 20px;
   overflow-y: auto;
   max-height: calc(80vh - 80px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 20px;
 }
 
-.field:last-child {
-  margin-bottom: 0;
+.field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+
+.segmented-btn:hover {
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  color: var(--text);
+}
+
+.segmented-btn.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border) inset;
 }
 
 label {
@@ -454,10 +468,9 @@ select:focus {
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
 }
 
-button {
+button.btn {
   padding: 8px 16px;
   border-radius: 6px;
   border: 1px solid var(--primary);
@@ -468,17 +481,17 @@ button {
   transition: all 0.2s ease;
 }
 
-button:hover:not(:disabled) {
+button.btn:hover:not(:disabled) {
   background: var(--primary-strong);
 }
 
-button.ghost {
+button.btn.ghost {
   background: var(--bg);
   color: var(--primary);
   border-color: var(--primary);
 }
 
-button.ghost:hover {
+button.btn.ghost:hover {
   background: var(--surface);
 }
 
@@ -490,7 +503,6 @@ button[disabled] {
 .hint {
   color: var(--muted);
   font-size: 12px;
-  margin: 4px 0 0 0;
 }
 
 
@@ -510,7 +522,7 @@ button[disabled] {
   font-size: 2rem;
   cursor: pointer;
   z-index: 1000;
-  padding: 4px;
+  padding: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
