@@ -8,197 +8,44 @@
 
       <!-- Full screen chats -->
       <div class=" chats-fullscreen">
-        <div class="chat-card">
-          <div class="frame-wrap" v-if="twitchChannel">
-            <iframe :src="twitchChatUrl" frameborder="0" scrolling="no" height="100%" width="100%" title="Twitch Chat" allowfullscreen>
+        <div class="chat-card" v-for="entry in chats" :key="entry.id">
+          <div class="frame-wrap" v-if="getEmbed(entry)">
+            <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
             </iframe>
           </div>
-          <div v-else class="placeholder">No Twitch channel set.</div>
-        </div>
-
-        <div class="chat-card">
-          <div class="frame-wrap" v-if="youtubeVideoId">
-            <iframe :src="youtubeChatUrl" frameborder="0" scrolling="no" height="100%" width="100%" title="YouTube Live Chat" allowfullscreen>
-            </iframe>
-          </div>
-          <div v-else class="placeholder">No YouTube live video set.</div>
+          <div v-else class="placeholder">No chat configured.</div>
         </div>
       </div>
 
       <!-- Settings Modal -->
-      <SettingsModal :open="showSettings" v-model:twitchInput="twitchInput" :twitchChannel="twitchChannel" v-model:youtubeInput="youtubeInput" :youtubeVideoId="youtubeVideoId" :isResolving="isResolving" @save-twitch="saveTwitch" @clear-twitch="clearTwitch" @save-youtube="saveYouTube" @clear-youtube="clearYouTube" @close="closeSettings" />
+      <SettingsModal :open="showSettings" v-model:chats="chats" @close="closeSettings" />
     </div>
   </ClientOnly>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useColorMode } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
 const colorMode = useColorMode()
 
+type Platform = 'twitch' | 'youtube' | 'kick'
+type Mode = 'auto' | 'manual'
+interface ChatEntry {
+  id: string
+  input: string
+  platform: Platform | null
+  mode: Mode
+  parsed: Record<string, any>
+  locked?: boolean
+}
+
 const STORAGE_KEYS = {
-  twitchInput: 'splitchat:twitch:input',
-  twitchChannel: 'splitchat:twitch:channel',
-  youtubeInput: 'splitchat:youtube:input',
-  youtubeVideoId: 'splitchat:youtube:videoId'
+  chats: 'splitchat:chats'
 } as const
 
-const twitchInput = ref('')
-const twitchChannel = ref('')
-
-const youtubeInput = ref('')
-const youtubeVideoId = ref('')
-const isResolving = ref(false)
+const chats = ref<ChatEntry[]>([])
 const showSettings = ref(false)
-
-const twitchChatUrl = computed(() => {
-  if (!twitchChannel.value) return ''
-  // Twitch chat embed requires parent param - use current host
-  const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-  const url = new URL('https://www.twitch.tv/embed/' + encodeURIComponent(twitchChannel.value) + '/chat')
-  url.searchParams.set('parent', parent)
-  if (colorMode.value === 'dark') {
-    url.searchParams.set('darkpopout', 'true')
-  }
-  return url.toString()
-})
-
-const youtubeChatUrl = computed(() => {
-  if (!youtubeVideoId.value) return ''
-  const url = new URL('https://www.youtube.com/live_chat')
-  url.searchParams.set('v', youtubeVideoId.value)
-  url.searchParams.set('is_popout', '1')
-  url.searchParams.set('embed_domain', typeof window !== 'undefined' ? window.location.hostname : 'localhost')
-  if (colorMode.value === 'dark') {
-    url.searchParams.set('dark_theme', '1')
-  }
-  return url.toString()
-})
-
-function extractTwitchChannel(input: string): string | '' {
-  try {
-    const url = new URL(input)
-    const host = url.hostname.replace(/^www\./, '')
-    if (host === 'twitch.tv' || host === 'm.twitch.tv') {
-      const seg = url.pathname.replace(/^\//, '').split('/')[0]
-      return seg || ''
-    }
-  } catch {
-    // not a URL, treat as channel name
-    if (/^[a-zA-Z0-9_]{3,25}$/.test(input)) return input
-  }
-  return ''
-}
-
-function parseYouTubeInputOnClient(input: string): { videoId?: string, channelId?: string, handle?: string, vanity?: string } {
-  // raw handle
-  if (input.startsWith('@') && !input.startsWith('@http')) {
-    return { handle: input.replace(/^@/, '') }
-  }
-  // raw channel id
-  if (/^UC[\w-]{20,}$/.test(input)) {
-    return { channelId: input }
-  }
-
-  let url: URL | null = null
-  try {
-    url = new URL(input)
-  } catch {
-    if (/^(www\.)?youtube\.com\//.test(input) || /^youtu\.be\//.test(input)) {
-      try { url = new URL('https://' + input) } catch { }
-    }
-  }
-  if (!url) return {}
-
-  const host = url.hostname.replace(/^www\./, '')
-  if (host === 'youtu.be') {
-    const id = url.pathname.replace(/^\//, '')
-    if (id) return { videoId: id }
-  }
-  if (host.endsWith('youtube.com')) {
-    const path = url.pathname
-    const sp = url.searchParams
-    if (path === '/watch') {
-      const v = sp.get('v') || undefined
-      if (v) return { videoId: v }
-    }
-    const liveMatch = path.match(/^\/live\/([\w-]{8,})/)
-    if (liveMatch) return { videoId: liveMatch[1] }
-    const chMatch = path.match(/^\/channel\/([\w-]{8,})/)
-    if (chMatch) return { channelId: chMatch[1] }
-    const handleMatch = path.match(/^\/@([\w.-]{2,})/)
-    if (handleMatch) return { handle: handleMatch[1] }
-    const userMatch = path.match(/^\/(?:user|c)\/([\w.-]{2,})/)
-    if (userMatch) return { vanity: userMatch[1] }
-  }
-  return {}
-}
-
-async function saveTwitch() {
-  const channel = extractTwitchChannel(twitchInput.value)
-  twitchChannel.value = channel
-  localStorage.setItem(STORAGE_KEYS.twitchInput, twitchInput.value)
-  localStorage.setItem(STORAGE_KEYS.twitchChannel, channel)
-}
-
-function clearTwitch() {
-  twitchInput.value = ''
-  twitchChannel.value = ''
-  localStorage.removeItem(STORAGE_KEYS.twitchInput)
-  localStorage.removeItem(STORAGE_KEYS.twitchChannel)
-}
-
-async function saveYouTube() {
-  if (!youtubeInput.value) return
-  isResolving.value = true
-  try {
-    console.log('[ui] saveYouTube start', { input: youtubeInput.value })
-    const parsed = parseYouTubeInputOnClient(youtubeInput.value)
-    console.log('[ui] parsed', parsed)
-
-    if (parsed.videoId) {
-      youtubeVideoId.value = parsed.videoId
-      console.log('[ui] youtubeVideoId set (local)', youtubeVideoId.value)
-    } else {
-      const q = new URLSearchParams({ input: youtubeInput.value })
-      const url = `/api/youtube/live?${q.toString()}`
-      console.log('[ui] request', url)
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
-      console.log('[ui] response status', res.status)
-      const ct = res.headers.get('content-type') || ''
-      if (ct.includes('application/json')) {
-        const data = await res.json()
-        console.log('[ui] response payload', data)
-        youtubeVideoId.value = data?.videoId || ''
-      } else {
-        const text = await res.text()
-        console.error('[ui] non-json response from /api/youtube/live', text.slice(0, 400))
-        youtubeVideoId.value = ''
-      }
-      console.log('[ui] youtubeVideoId set (api)', youtubeVideoId.value)
-    }
-  } catch (e) {
-    console.error('[ui] saveYouTube error', e)
-    youtubeVideoId.value = ''
-  } finally {
-    isResolving.value = false
-    localStorage.setItem(STORAGE_KEYS.youtubeInput, youtubeInput.value)
-    if (youtubeVideoId.value) {
-      localStorage.setItem(STORAGE_KEYS.youtubeVideoId, youtubeVideoId.value)
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.youtubeVideoId)
-    }
-  }
-}
-
-function clearYouTube() {
-  youtubeInput.value = ''
-  youtubeVideoId.value = ''
-  localStorage.removeItem(STORAGE_KEYS.youtubeInput)
-  localStorage.removeItem(STORAGE_KEYS.youtubeVideoId)
-}
-
 function openSettings() {
   showSettings.value = true
 }
@@ -208,20 +55,93 @@ function closeSettings() {
 }
 
 onMounted(() => {
-  // hydrate from localStorage
+  // hydrate chats from localStorage
   try {
-    const ti = localStorage.getItem(STORAGE_KEYS.twitchInput) || ''
-    const tc = localStorage.getItem(STORAGE_KEYS.twitchChannel) || ''
-    const yi = localStorage.getItem(STORAGE_KEYS.youtubeInput) || ''
-    const yv = localStorage.getItem(STORAGE_KEYS.youtubeVideoId) || ''
-    twitchInput.value = ti
-    twitchChannel.value = tc
-    youtubeInput.value = yi
-    youtubeVideoId.value = yv
+    const raw = localStorage.getItem(STORAGE_KEYS.chats)
+    if (raw) {
+      const parsed = JSON.parse(raw) as ChatEntry[]
+      chats.value = parsed.map(e => ({
+        id: e.id || Math.random().toString(36).slice(2),
+        input: e.input || '',
+        platform: e.platform || null,
+        mode: e.mode === 'auto' || e.mode === 'manual' ? e.mode : 'manual',
+        parsed: e.parsed || {},
+        locked: !!e.locked
+      }))
+    }
   } catch {
     // ignore
   }
 })
+
+watch(chats, (val) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.chats, JSON.stringify(val))
+  } catch {
+    // ignore
+  }
+}, { deep: true })
+
+const resolvedYouTubeIds = ref<Record<string, { videoId: string, input: string }>>({})
+const resolvingIds = new Set<string>()
+
+watch(chats, async (list) => {
+  for (const entry of list) {
+    if (entry.platform !== 'youtube') continue
+    if (!entry.locked) continue
+    const id = entry.id
+    const cache = resolvedYouTubeIds.value[id]
+    const cacheMatches = !!(cache && cache.input === entry.input)
+    const hasVideo = !!(entry.parsed?.videoId || (cacheMatches && cache.videoId))
+    if (hasVideo || resolvingIds.has(id)) continue
+    // attempt resolve via API using raw input
+    if (!entry.input) continue
+    try {
+      resolvingIds.add(id)
+      const q = new URLSearchParams({ input: entry.input })
+      const url = `/api/youtube/live?${q.toString()}`
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
+      if ((res.headers.get('content-type') || '').includes('application/json')) {
+        const data = await res.json()
+        if (data?.videoId) {
+          resolvedYouTubeIds.value = { ...resolvedYouTubeIds.value, [id]: { videoId: data.videoId, input: entry.input } }
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      resolvingIds.delete(id)
+    }
+  }
+}, { deep: true, immediate: true })
+
+function getEmbed(entry: ChatEntry): { url: string, title: string } | null {
+  if (!entry.locked) return null
+  const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+  if (entry.platform === 'twitch' && entry.parsed?.channel) {
+    const url = new URL('https://www.twitch.tv/embed/' + encodeURIComponent(entry.parsed.channel) + '/chat')
+    url.searchParams.set('parent', parent)
+    if (colorMode.value === 'dark') url.searchParams.set('darkpopout', 'true')
+    return { url: url.toString(), title: 'Twitch Chat' }
+  }
+  if (entry.platform === 'youtube') {
+    const cache = resolvedYouTubeIds.value[entry.id]
+    const cachedId = cache && cache.input === entry.input ? cache.videoId : ''
+    const videoId = entry.parsed?.videoId || cachedId
+    if (!videoId) return null
+    const url = new URL('https://www.youtube.com/live_chat')
+    url.searchParams.set('v', videoId)
+    url.searchParams.set('is_popout', '1')
+    url.searchParams.set('embed_domain', parent)
+    if (colorMode.value === 'dark') url.searchParams.set('dark_theme', '1')
+    return { url: url.toString(), title: 'YouTube Live Chat' }
+  }
+  if (entry.platform === 'kick' && entry.parsed?.channel) {
+    const base = `https://kick.com/popout/${encodeURIComponent(entry.parsed.channel)}/chat`
+    return { url: base, title: 'Kick Chat' }
+  }
+  return null
+}
 </script>
 
 <style>
@@ -276,11 +196,14 @@ body {
 
 /* Full screen chats */
 .chats-fullscreen {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   height: 100vh;
   gap: 1px;
   background-color: #222;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .chat-card {
@@ -288,6 +211,7 @@ body {
   flex-direction: column;
   height: 100%;
   border: none;
+  width: 100%;
 }
 
 .chat-card h2 {
@@ -351,7 +275,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px;
+  padding: 14px 16px 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -365,18 +289,23 @@ body {
   background: none;
   border: none;
   font-size: 24px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 0;
+  padding: 2px;
   width: 30px;
   height: 30px;
   display: flex;
+  font-size: 2rem;
   align-items: center;
   justify-content: center;
   color: #6c757d;
+  transition: .2s;
 }
 
 .close-button:hover {
-  color: #000;
+  background: var(--primary-strong);
+  color: var(--text);
+  transform: scale(1.1);
 }
 
 .modal-body {
@@ -388,10 +317,29 @@ body {
   gap: 1.5rem;
 }
 
+.chats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.chats-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
 .field-inline {
@@ -408,14 +356,18 @@ body {
   font-weight: 600;
 }
 
+.inline-label .iconify {
+  font-size: 1.4rem;
+}
+
 .segmented {
   display: inline-flex;
   align-items: center;
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 4px;
-  gap: 4px;
+  padding: 0px;
+  gap: 0px;
 }
 
 .segmented-btn {
@@ -425,6 +377,7 @@ body {
   width: 36px;
   height: 36px;
   border: none;
+  font-size: 1.2rem;
   background: transparent;
   color: var(--muted);
   border-radius: 999px;
@@ -438,8 +391,8 @@ body {
 }
 
 .segmented-btn.active {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--primary);
+  color: #fff;
   box-shadow: 0 0 0 1px var(--border) inset;
 }
 
@@ -471,18 +424,20 @@ select:focus {
 }
 
 button.btn {
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-radius: 6px;
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #fff;
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s ease;
+  line-height: 1;
+  transition: .2s;
 }
 
 button.btn:hover:not(:disabled) {
   background: var(--primary-strong);
+  transform: translateY(-1px);
 }
 
 button.btn.ghost {

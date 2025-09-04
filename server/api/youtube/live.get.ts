@@ -38,9 +38,9 @@ function extractYouTubeIdFromUrl(input: string): { videoId?: string, channelId?:
         return { channelId: input }
     }
 
-    // treat plain text as channel search query
+    // treat plain text as @handle (as if input was youtube.com/@<handle>)
     if (!/^https?:\/\//i.test(input) && !/^(www\.)?youtube\.com\//i.test(input) && !/^youtu\.be\//i.test(input)) {
-        return { queryText: input }
+        return { handle: input.replace(/^@/, '') }
     }
 
     let url: URL | null = null
@@ -101,31 +101,48 @@ function extractYouTubeIdFromUrl(input: string): { videoId?: string, channelId?:
 async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, handle?: string, vanity?: string, username?: string, queryText?: string): Promise<string | null> {
     const base = 'https://www.googleapis.com/youtube/v3'
 
-    // If we have a handle, resolve to channelId
+    // Resolve to channelId
     let resolvedChannelId = channelId
+    let attemptedHandleVerify = false
     console.log('[api] Resolving channel for:', { channelId, handle, vanity, username, queryText })
 
-    // try legacy username via channels.forUsername
-    if (!resolvedChannelId && username) {
-        const chUrl = new URL(base + '/channels')
-        chUrl.searchParams.set('part', 'id')
-        chUrl.searchParams.set('forUsername', username)
-        chUrl.searchParams.set('key', apiKey)
-        console.log('[api] Fetching legacy username:', chUrl.toString())
-        const chRes = await fetch(chUrl)
-        if (chRes.ok) {
-            const chData: any = await chRes.json()
-            resolvedChannelId = chData?.items?.[0]?.id || null
-            console.log('[api] Resolved legacy username to channelId:', resolvedChannelId)
-        } else {
-            console.log('[api] Failed to fetch legacy username:', chRes.status)
+    // If we have a handle, prefer resolving it precisely via search + channels(snippet.customUrl)
+    if (!resolvedChannelId && handle) {
+        attemptedHandleVerify = true
+        const searchUrl = new URL(base + '/search')
+        searchUrl.searchParams.set('part', 'id')
+        searchUrl.searchParams.set('q', `@${handle}`)
+        searchUrl.searchParams.set('type', 'channel')
+        searchUrl.searchParams.set('maxResults', '5')
+        searchUrl.searchParams.set('key', apiKey)
+        console.log('[api] Searching candidates for handle:', searchUrl.toString())
+        const sRes = await fetch(searchUrl)
+        if (sRes.ok) {
+            const data: any = await sRes.json()
+            const ids: string[] = (data?.items || []).map((it: any) => it?.id?.channelId).filter(Boolean)
+            if (ids.length) {
+                const chUrl = new URL(base + '/channels')
+                chUrl.searchParams.set('part', 'snippet')
+                chUrl.searchParams.set('id', ids.join(','))
+                chUrl.searchParams.set('key', apiKey)
+                console.log('[api] Verifying handle via channels(snippet):', chUrl.toString())
+                const cRes = await fetch(chUrl)
+                if (cRes.ok) {
+                    const cData: any = await cRes.json()
+                    const match = (cData?.items || []).find((it: any) => String(it?.snippet?.customUrl || '').toLowerCase() === ('@' + handle).toLowerCase())
+                    resolvedChannelId = match?.id || ids[0] || null
+                    console.log('[api] Handle resolved to channelId:', resolvedChannelId)
+                }
+            }
         }
     }
 
-    if (!resolvedChannelId && (handle || vanity || queryText)) {
+    // If vanity/username/query provided, search for channel (fallback).
+    // Do NOT fallback to arbitrary handle search if exact handle verification failed.
+    if (!resolvedChannelId && (vanity || username || queryText || (!attemptedHandleVerify && handle))) {
         const url = new URL(base + '/search')
         url.searchParams.set('part', 'id')
-        url.searchParams.set('q', handle ? `@${handle}` : String(vanity || queryText))
+        url.searchParams.set('q', handle && !attemptedHandleVerify ? `@${handle}` : String(vanity || username || queryText))
         url.searchParams.set('type', 'channel')
         url.searchParams.set('maxResults', '1')
         url.searchParams.set('key', apiKey)
@@ -202,7 +219,7 @@ export default defineEventHandler(async (event: H3Event): Promise<LiveLookupResp
     const cacheKey = generateCacheKey(channelId, handle, vanity, username, queryText)
     if (cacheKey) {
         const cachedEntry = channelCache.get(cacheKey)
-        if (cachedEntry && isCacheValid(cachedEntry)) {
+        if (cachedEntry && isCacheValid(cachedEntry) && cachedEntry.videoId) {
             console.log('[api] Returning cached result:', { videoId: cachedEntry.videoId, cacheKey, age: Math.round((Date.now() - cachedEntry.timestamp) / 1000) + 's' })
             setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
             return { videoId: cachedEntry.videoId, reason: cachedEntry.reason }
@@ -214,11 +231,11 @@ export default defineEventHandler(async (event: H3Event): Promise<LiveLookupResp
     console.log('[api] Final result:', { videoId: liveVideoId })
 
     // Cache the result if we have a cache key (channel lookup)
-    if (cacheKey) {
+    // only cache positive results; never cache empty/null
+    if (cacheKey && liveVideoId) {
         const cacheEntry: CacheEntry = {
             videoId: liveVideoId,
-            timestamp: Date.now(),
-            reason: liveVideoId ? undefined : 'No live video found'
+            timestamp: Date.now()
         }
         channelCache.set(cacheKey, cacheEntry)
         console.log('[api] Cached result for key:', cacheKey)
