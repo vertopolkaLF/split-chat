@@ -21,17 +21,19 @@
         </div>
 
         <Teleport to="body">
-            <div v-if="pickerOpen && !isAuto" class="platform-picker portal" :style="portalStyle" ref="pickerEl">
-                <button type="button" class="picker-item is-twitch" @click="choose('twitch')">
-                    <Icon name="mdi:twitch" /> <span>Twitch</span>
-                </button>
-                <button type="button" class="picker-item is-youtube" @click="choose('youtube')">
-                    <Icon name="mdi:youtube" /> <span>YouTube</span>
-                </button>
-                <button type="button" class="picker-item is-kick" @click="choose('kick')">
-                    <Icon name="simple-icons:kick" /> <span>Kick</span>
-                </button>
-            </div>
+            <Transition @before-enter="onPickerBeforeEnter" @enter="onPickerEnter" @after-enter="onPickerAfterEnter" @before-leave="onPickerBeforeLeave" @leave="onPickerLeave" @after-leave="onPickerAfterLeave">
+                <div v-if="pickerOpen && !isAuto" class="platform-picker portal" :style="portalStyle" ref="pickerEl">
+                    <button type="button" class="picker-item is-twitch" @click="choose('twitch')">
+                        <Icon name="mdi:twitch" /> <span>Twitch</span>
+                    </button>
+                    <button type="button" class="picker-item is-youtube" @click="choose('youtube')">
+                        <Icon name="mdi:youtube" /> <span>YouTube</span>
+                    </button>
+                    <button type="button" class="picker-item is-kick" @click="choose('kick')">
+                        <Icon name="simple-icons:kick" /> <span>Kick</span>
+                    </button>
+                </div>
+            </Transition>
         </Teleport>
     </div>
 </template>
@@ -224,6 +226,60 @@ function updatePortalPosition() {
     }
 }
 
+function onPickerBeforeEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = '0px'
+    node.style.opacity = '0'
+    node.style.filter = 'blur(4px)'
+}
+
+function onPickerEnter(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    const h = node.scrollHeight
+    node.style.transition = 'height .22s ease, opacity .22s ease, filter .22s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = h + 'px'
+        node.style.opacity = '1'
+        node.style.filter = 'blur(0)'
+        setTimeout(done, 240)
+    })
+}
+
+function onPickerAfterEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.height = 'auto'
+    node.style.overflow = ''
+    node.style.transition = ''
+}
+
+function onPickerBeforeLeave(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = node.scrollHeight + 'px'
+    node.style.opacity = '1'
+    node.style.filter = 'blur(0)'
+}
+
+function onPickerLeave(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = '0px'
+        node.style.opacity = '0'
+        node.style.filter = 'blur(4px)'
+        setTimeout(done, 220)
+    })
+}
+
+function onPickerAfterLeave(_el: Element) {
+    // no-op
+}
+
 function onSave() {
     if (!local.platform) {
         const detected = detectPlatform(local.input)
@@ -370,6 +426,7 @@ function onEdit() {
     border-radius: 8px;
     background: var(--surface);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    overflow: clip;
 }
 
 .platform-picker.portal {

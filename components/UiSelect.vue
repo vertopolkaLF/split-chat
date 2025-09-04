@@ -5,11 +5,13 @@
             <Icon name="material-symbols:expand-more" class="ui-select__chevron" />
         </button>
         <Teleport to="body">
-            <div v-if="open" class="ui-select__menu portal" :style="menuStyle" role="listbox" ref="menuRef">
-                <button v-for="opt in options" :key="opt.value" type="button" class="ui-select__option" :class="{ active: opt.value === currentValue }" @click="choose(opt.value)" role="option" :aria-selected="opt.value === currentValue">
-                    {{ opt.label }}
-                </button>
-            </div>
+            <Transition @before-enter="onMenuBeforeEnter" @enter="onMenuEnter" @after-enter="onMenuAfterEnter" @before-leave="onMenuBeforeLeave" @leave="onMenuLeave" @after-leave="onMenuAfterLeave">
+                <div v-if="open" class="ui-select__menu portal" :style="menuStyle" role="listbox" ref="menuRef">
+                    <button v-for="opt in options" :key="opt.value" type="button" class="ui-select__option" :class="{ active: opt.value === currentValue }" @click="choose(opt.value)" role="option" :aria-selected="opt.value === currentValue">
+                        {{ opt.label }}
+                    </button>
+                </div>
+            </Transition>
         </Teleport>
     </div>
 
@@ -88,7 +90,6 @@ function updateMenuPosition() {
         top: `${Math.round(top)}px`,
         left: `${Math.round(left)}px`,
         width: `${Math.round(minWidth)}px`,
-        height: '0px',
         zIndex: '2100'
     }
     // clamp to viewport right edge after render
@@ -101,11 +102,6 @@ function updateMenuPosition() {
             left = Math.max(6, left - overflow)
             menuStyle.value = { ...menuStyle.value, left: `${Math.round(left)}px` }
         }
-        const fullHeight = Math.ceil(menu.scrollHeight)
-        // start collapsed to 0, then animate to full height
-        requestAnimationFrame(() => {
-            menuStyle.value = { ...menuStyle.value, height: `${fullHeight}px` }
-        })
     })
 }
 
@@ -133,6 +129,60 @@ function measureMinWidth() {
     const total = Math.ceil(max + paddingLeft + paddingRight + gap + chevron)
     // Prevent ridiculous widths
     buttonMinWidth.value = Math.min(Math.max(total, 100), 220)
+}
+
+function onMenuBeforeEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = '0px'
+    node.style.opacity = '0'
+    node.style.filter = 'blur(4px)'
+}
+
+function onMenuEnter(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    const h = node.scrollHeight
+    node.style.transition = 'height .22s ease, opacity .22s ease, filter .22s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = h + 'px'
+        node.style.opacity = '1'
+        node.style.filter = 'blur(0)'
+        setTimeout(done, 240)
+    })
+}
+
+function onMenuAfterEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.height = 'auto'
+    node.style.overflow = ''
+    node.style.transition = ''
+}
+
+function onMenuBeforeLeave(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = node.scrollHeight + 'px'
+    node.style.opacity = '1'
+    node.style.filter = 'blur(0)'
+}
+
+function onMenuLeave(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = '0px'
+        node.style.opacity = '0'
+        node.style.filter = 'blur(4px)'
+        setTimeout(done, 220)
+    })
+}
+
+function onMenuAfterLeave(_el: Element) {
+    // no-op
 }
 </script>
 
@@ -175,7 +225,6 @@ function measureMinWidth() {
     padding: 4px;
     z-index: 2100;
     overflow: clip;
-    transition: height .18s ease;
 }
 
 .ui-select__menu.portal {
