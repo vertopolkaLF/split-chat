@@ -73,6 +73,7 @@ const widthsPercent = ref<Record<string, number>>({})
 const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
 const isBlurUnloaded = ref(false)
 const reloadingChats = ref<Set<string>>(new Set())
+const isSettingsOpen = ref(false)
 let unloadTimer: number | null = null
 // visible chats comes first so other computeds can depend on it safely
 const visibleChats = computed(() => chats.value.filter(e => e.locked && (getEmbed(e) || isChatConfigured(e))))
@@ -137,10 +138,12 @@ const resizing = ref<{ startX: number, leftId: string, rightId: string, leftStar
 const isResizing = computed(() => !!resizing.value)
 function openSettings() {
   showSettings.value = true
+  isSettingsOpen.value = true
 }
 
 function closeSettings() {
   showSettings.value = false
+  isSettingsOpen.value = false
 }
 
 onMounted(() => {
@@ -214,6 +217,9 @@ const resolvedYouTubeIds = ref<Record<string, { videoId: string, input: string }
 const resolvingIds = new Set<string>()
 
 watch(chats, async (list) => {
+  // Skip API requests when settings are open to avoid unnecessary calls
+  if (isSettingsOpen.value) return
+
   for (const entry of list) {
     if (entry.platform !== 'youtube') continue
     if (!entry.locked) continue
