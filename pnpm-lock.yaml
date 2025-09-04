@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@formkit/auto-animate':
+        specifier: 0.8.4
+        version: 0.8.4
       '@nuxt/fonts':
         specifier: 0.11.4
         version: 0.11.4(db0@0.3.2)(ioredis@5.7.0)(magicast@0.3.5)(vite@7.1.4(jiti@2.5.1)(terser@5.44.0)(yaml@2.8.1))
@@ -330,6 +333,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@formkit/auto-animate@0.8.4':
+    resolution: {integrity: sha512-DHHC01EJ1p70Q0z/ZFRBIY8NDnmfKccQoyoM84Tgb6omLMat6jivCdf272Y8k3nf4Lzdin/Y4R9q8uFtU0GbnA==}
 
   '@iconify/collections@1.0.591':
     resolution: {integrity: sha512-0wOTrNgLVu+Nrg2BoNbXnA8+/GkAdj9sE597Hjc/5HO0/Ui6d/HgA74UUeEcHQ5XKKuLuATDVhzHYPh9Ysc18A==}
@@ -3428,6 +3434,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.9':
     optional: true
+
+  '@formkit/auto-animate@0.8.4': {}
 
   '@iconify/collections@1.0.591':
     dependencies:

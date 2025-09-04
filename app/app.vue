@@ -224,6 +224,20 @@ body {
   flex-shrink: 0;
 }
 
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-row {
+  cursor: grab;
+}
+
+.chat-row:active {
+  cursor: grabbing;
+}
+
 .frame-wrap {
   flex: 1;
   border: none;

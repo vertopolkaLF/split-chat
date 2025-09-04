@@ -20,8 +20,10 @@
                             + Add chat
                         </button>
                     </div>
-                    <div class="chat-list">
-                        <ChatEntryInput v-for="(entry, idx) in localChats" :key="entry.id" v-model="localChats[idx]" @remove="removeEntry(idx)" />
+                    <div class="chat-list" ref="listRef">
+                        <div v-for="({ entry }, idx) in rendered" :key="entry.id" class="chat-row" :draggable="!!entry.locked" @dragstart="onDragStart(idx, $event)" @dragover.prevent="onDragOver(idx, $event)" @drop.prevent="onDrop" @dragend="onDragEnd">
+                            <ChatEntryInput v-model="localChats[localChats.findIndex(e => e.id === entry.id)]" @remove="removeEntry(localChats.findIndex(e => e.id === entry.id))" />
+                        </div>
                     </div>
                 </div>
 
@@ -51,7 +53,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
+import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useColorMode } from '#imports'
 import ChatEntryInput from './ChatEntryInput.vue'
 
@@ -84,17 +87,31 @@ function setTheme(mode: 'light' | 'dark' | 'system') {
 
 const localChats = ref<ChatEntry[]>([])
 const overlayDown = ref(false)
+const [listRef] = useAutoAnimate()
+const dragIndex = ref<number | null>(null)
+const draggingId = ref<string | null>(null)
+const reorderLock = ref(false)
+const isDragging = ref(false)
+const displayOrder = ref<string[]>([])
+
+const rendered = computed(() => {
+    const idToEntry = new Map(localChats.value.map((e, i) => [e.id, { entry: e, index: i }]))
+    return displayOrder.value
+        .map(id => idToEntry.get(id))
+        .filter(Boolean) as { entry: ChatEntry, index: number }[]
+})
 
 watch(() => props.open, (v) => {
     if (v) {
         // clone to avoid mutating parent directly
         localChats.value = props.chats?.map(x => ({ ...x, parsed: { ...x.parsed }, locked: !!x.locked })) || []
         if (localChats.value.length === 0) addEntry()
+        displayOrder.value = localChats.value.map(e => e.id)
     }
 })
 
 watch(localChats, (val) => {
-    emit('update:chats', val)
+    if (!isDragging.value) emit('update:chats', val)
 }, { deep: true })
 
 function addEntry() {
@@ -119,6 +136,51 @@ function onOverlayPointerDown() {
 function onOverlayPointerUp() {
     if (overlayDown.value) emit('close')
     overlayDown.value = false
+}
+
+function onDragStart(index: number, ev: DragEvent) {
+    if (!localChats.value[index]?.locked) {
+        ev.preventDefault()
+        return
+    }
+    isDragging.value = true
+    dragIndex.value = index
+    draggingId.value = localChats.value[index].id
+    // prevent ghost image
+    if (ev.dataTransfer) {
+        ev.dataTransfer.setDragImage(new Image(), 0, 0)
+    }
+}
+
+function onDragOver(index: number, _ev: DragEvent) {
+    if (dragIndex.value === null || !draggingId.value) return
+    if (reorderLock.value) return
+    // reorder displayOrder only
+    const from = displayOrder.value.indexOf(draggingId.value)
+    if (from === -1 || from === index) return
+    const next = [...displayOrder.value]
+    next.splice(from, 1)
+    next.splice(index, 0, draggingId.value)
+    displayOrder.value = next
+    reorderLock.value = true
+    setTimeout(() => { reorderLock.value = false }, 220)
+}
+
+function onDrop(_ev: DragEvent) {
+    // commit on drop
+    onDragEnd()
+}
+
+function onDragEnd() {
+    if (isDragging.value) {
+        // commit order to localChats
+        const idToEntry = new Map(localChats.value.map(e => [e.id, e]))
+        const committed = displayOrder.value.map(id => idToEntry.get(id)).filter(Boolean) as ChatEntry[]
+        localChats.value = committed
+    }
+    isDragging.value = false
+    dragIndex.value = null
+    draggingId.value = null
 }
 </script>
 

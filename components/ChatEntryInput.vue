@@ -272,7 +272,7 @@ function onEdit() {
 }
 
 .locked .chat-input {
-    cursor: default;
+    cursor: grab;
     opacity: 0.7;
 }
 

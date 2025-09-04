@@ -7,7 +7,12 @@ export default defineNuxtConfig({
     youtubeApiKey: process.env.YT_API_KEY
   },
 
-  modules: ['@nuxt/icon', '@nuxtjs/color-mode', '@nuxt/fonts'],
+  modules: [
+    '@nuxt/icon',
+    '@nuxtjs/color-mode',
+    '@nuxt/fonts',
+    '@formkit/auto-animate'
+  ],
 
   colorMode: {
     preference: 'system',
