@@ -173,7 +173,7 @@ async function saveYouTube() {
       console.log('[ui] youtubeVideoId set (local)', youtubeVideoId.value)
     } else {
       const q = new URLSearchParams({ input: youtubeInput.value })
-      const url = `/youtube/live?${q.toString()}`
+      const url = `/api/youtube/live?${q.toString()}`
       console.log('[ui] request', url)
       const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
       console.log('[ui] response status', res.status)

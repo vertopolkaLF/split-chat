@@ -5,6 +5,30 @@ type LiveLookupResponse = {
     reason?: string
 }
 
+type CacheEntry = {
+    videoId: string | null
+    timestamp: number
+    reason?: string
+}
+
+// In-memory cache for channel lookups (1 hour expiration)
+const channelCache = new Map<string, CacheEntry>()
+const CACHE_DURATION = 60 * 60 * 1000 // 1 hour in milliseconds
+
+function generateCacheKey(channelId?: string, handle?: string, vanity?: string, username?: string, queryText?: string): string | null {
+    // Create a unique key for caching based on channel identifiers
+    if (channelId) return `channel:${channelId}`
+    if (handle) return `handle:${handle}`
+    if (vanity) return `vanity:${vanity}`
+    if (username) return `username:${username}`
+    if (queryText) return `query:${queryText}`
+    return null
+}
+
+function isCacheValid(entry: CacheEntry): boolean {
+    return Date.now() - entry.timestamp < CACHE_DURATION
+}
+
 function extractYouTubeIdFromUrl(input: string): { videoId?: string, channelId?: string, handle?: string, vanity?: string, username?: string, queryText?: string } {
     // support raw handle and raw channel id
     if (input.startsWith('@')) {
@@ -79,33 +103,47 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
 
     // If we have a handle, resolve to channelId
     let resolvedChannelId = channelId
+    console.log('[api] Resolving channel for:', { channelId, handle, vanity, username, queryText })
+
     // try legacy username via channels.forUsername
     if (!resolvedChannelId && username) {
         const chUrl = new URL(base + '/channels')
         chUrl.searchParams.set('part', 'id')
         chUrl.searchParams.set('forUsername', username)
         chUrl.searchParams.set('key', apiKey)
+        console.log('[api] Fetching legacy username:', chUrl.toString())
         const chRes = await fetch(chUrl)
         if (chRes.ok) {
             const chData: any = await chRes.json()
             resolvedChannelId = chData?.items?.[0]?.id || null
+            console.log('[api] Resolved legacy username to channelId:', resolvedChannelId)
+        } else {
+            console.log('[api] Failed to fetch legacy username:', chRes.status)
         }
     }
 
     if (!resolvedChannelId && (handle || vanity || queryText)) {
         const url = new URL(base + '/search')
-        url.searchParams.set('part', 'snippet')
+        url.searchParams.set('part', 'id')
         url.searchParams.set('q', handle ? `@${handle}` : String(vanity || queryText))
         url.searchParams.set('type', 'channel')
         url.searchParams.set('maxResults', '1')
         url.searchParams.set('key', apiKey)
+        console.log('[api] Searching for channel:', url.toString())
         const res = await fetch(url)
-        if (!res.ok) return null
+        if (!res.ok) {
+            console.log('[api] Channel search failed:', res.status)
+            return null
+        }
         const data: any = await res.json()
-        resolvedChannelId = data?.items?.[0]?.snippet?.channelId || data?.items?.[0]?.id?.channelId
+        resolvedChannelId = data?.items?.[0]?.id?.channelId
+        console.log('[api] Resolved to channelId:', resolvedChannelId)
     }
 
-    if (!resolvedChannelId) return null
+    if (!resolvedChannelId) {
+        console.log('[api] No channelId resolved')
+        return null
+    }
 
     const searchUrl = new URL(base + '/search')
     searchUrl.searchParams.set('part', 'id')
@@ -115,10 +153,15 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
     searchUrl.searchParams.set('maxResults', '1')
     searchUrl.searchParams.set('key', apiKey)
 
+    console.log('[api] Searching for live video:', searchUrl.toString())
     const res2 = await fetch(searchUrl)
-    if (!res2.ok) return null
+    if (!res2.ok) {
+        console.log('[api] Live video search failed:', res2.status)
+        return null
+    }
     const data2: any = await res2.json()
     const videoId: string | undefined = data2?.items?.[0]?.id?.videoId
+    console.log('[api] Found live videoId:', videoId)
     return videoId || null
 }
 
@@ -132,24 +175,55 @@ export default defineEventHandler(async (event: H3Event): Promise<LiveLookupResp
 
     const config = useRuntimeConfig()
     const apiKey = config.youtubeApiKey as string | undefined
+    console.log('[api] API key present:', !!apiKey)
+
     if (!apiKey) {
+        console.log('[api] Missing YouTube API key')
         setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
         return { videoId: null, reason: 'Missing YouTube API key' }
     }
 
     if (!input) {
+        console.log('[api] Missing input')
         setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
         return { videoId: null, reason: 'Missing input' }
     }
 
     const { videoId: urlVideoId, channelId, handle, vanity, username, queryText } = extractYouTubeIdFromUrl(input)
+    console.log('[api] Parsed input:', { urlVideoId, channelId, handle, vanity, username, queryText })
 
     if (urlVideoId) {
+        console.log('[api] Direct video ID found:', urlVideoId)
         setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
         return { videoId: urlVideoId }
     }
 
+    // Check cache for channel lookups only
+    const cacheKey = generateCacheKey(channelId, handle, vanity, username, queryText)
+    if (cacheKey) {
+        const cachedEntry = channelCache.get(cacheKey)
+        if (cachedEntry && isCacheValid(cachedEntry)) {
+            console.log('[api] Returning cached result:', { videoId: cachedEntry.videoId, cacheKey, age: Math.round((Date.now() - cachedEntry.timestamp) / 1000) + 's' })
+            setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
+            return { videoId: cachedEntry.videoId, reason: cachedEntry.reason }
+        }
+    }
+
+    console.log('[api] Searching for live video on channel...')
     const liveVideoId = await findLiveVideoIdByChannel(apiKey, channelId, handle, vanity, username, queryText)
+    console.log('[api] Final result:', { videoId: liveVideoId })
+
+    // Cache the result if we have a cache key (channel lookup)
+    if (cacheKey) {
+        const cacheEntry: CacheEntry = {
+            videoId: liveVideoId,
+            timestamp: Date.now(),
+            reason: liveVideoId ? undefined : 'No live video found'
+        }
+        channelCache.set(cacheKey, cacheEntry)
+        console.log('[api] Cached result for key:', cacheKey)
+    }
+
     setHeader(event, 'Content-Type', 'application/json; charset=utf-8')
     return { videoId: liveVideoId }
 })
