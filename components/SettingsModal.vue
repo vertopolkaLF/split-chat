@@ -9,25 +9,6 @@
             </div>
 
             <div class="modal-body">
-
-                <div class="field">
-                    <div class="chats-header">
-                        <div class="inline-label chats-header-left">
-                            <Icon name="material-symbols:forum" />
-                            <span>Chats</span>
-                        </div>
-                        <button class="btn" type="button" @click="addEntry">
-                            + Add chat
-                        </button>
-                    </div>
-                    <div class="chat-list" ref="listRef">
-                        <div v-for="({ entry }, idx) in rendered" :key="entry.id" class="chat-row" :draggable="!!entry.locked" @dragstart="onDragStart(idx, $event)" @dragover.prevent="onDragOver(idx, $event)" @drop.prevent="onDrop" @dragend="onDragEnd">
-                            <ChatEntryInput v-model="localChats[localChats.findIndex(e => e.id === entry.id)]" @remove="removeEntry(localChats.findIndex(e => e.id === entry.id))" />
-                        </div>
-                    </div>
-                </div>
-
-
                 <div class="field field-inline">
                     <div class="inline-label">
                         <Icon name="material-symbols:palette" />
@@ -45,6 +26,42 @@
                         </button>
                     </div>
                 </div>
+                <div class="field">
+                    <div class="chats-header">
+                        <div class="inline-label chats-header-left">
+                            <Icon name="material-symbols:forum" />
+                            <span>Chats</span>
+                        </div>
+                        <button class="btn" type="button" @click="addEntry">
+                            <Icon name="material-symbols:add" />
+                            <span>Add chat</span>
+                        </button>
+                    </div>
+                    <div class="chat-list" ref="listRef">
+                        <div v-for="({ entry }, idx) in rendered" :key="entry.id" class="chat-row" :draggable="!!entry.locked" @dragstart="onDragStart(idx, $event)" @dragover.prevent="onDragOver(idx, $event)" @drop.prevent="onDrop" @dragend="onDragEnd">
+                            <ChatEntryInput v-model="localChats[localChats.findIndex(e => e.id === entry.id)]" @remove="removeEntry(localChats.findIndex(e => e.id === entry.id))" />
+                        </div>
+                    </div>
+                </div>
+
+
+
+                <div class="field">
+                    <div class="field field-inline">
+                        <div class="inline-label">
+                            <Icon name="material-symbols:tab" />
+                            <span>Unload chats on tab blur</span>
+                        </div>
+                        <UiSelect v-model="localSettings.unloadOnBlur" :options="delayOptions" />
+                    </div>
+                    <Transition @before-enter="onPlatformsBeforeEnter" @enter="onPlatformsEnter" @after-enter="onPlatformsAfterEnter" @before-leave="onPlatformsBeforeLeave" @leave="onPlatformsLeave" @after-leave="onPlatformsAfterLeave">
+                        <div v-if="localSettings.unloadOnBlur !== 'off'" class="platform-checkboxes" ref="platformsRef">
+                            <label class="inline-label platforms-label">Platforms</label>
+                            <PlatformMultiPicker v-model="localSettings.unloadPlatforms" />
+                            <div class="hint">Checked platforms will be unloaded after the selected delay.</div>
+                        </div>
+                    </Transition>
+                </div>
             </div>
 
         </div>
@@ -57,9 +74,12 @@ import { ref, watch, computed } from 'vue'
 import { useAutoAnimate } from '@formkit/auto-animate/vue'
 import { useColorMode } from '#imports'
 import ChatEntryInput from './ChatEntryInput.vue'
+import UiSelect from './UiSelect.vue'
+import PlatformMultiPicker from './PlatformMultiPicker.vue'
 
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
+type UnloadDelay = 'off' | 'instant' | '5s' | '10s' | '30s' | '1m'
 
 interface ChatEntry {
     id: string
@@ -70,14 +90,21 @@ interface ChatEntry {
     locked?: boolean
 }
 
+interface SettingsState {
+    unloadOnBlur: UnloadDelay
+    unloadPlatforms: Platform[]
+}
+
 const props = defineProps<{
     open: boolean
     chats: ChatEntry[]
+    settings: SettingsState
 }>()
 
 const emit = defineEmits<{
     (e: 'close'): void
     (e: 'update:chats', value: ChatEntry[]): void
+    (e: 'update:settings', value: SettingsState): void
 }>()
 
 const colorMode = useColorMode()
@@ -86,6 +113,7 @@ function setTheme(mode: 'light' | 'dark' | 'system') {
 }
 
 const localChats = ref<ChatEntry[]>([])
+const localSettings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
 const overlayDown = ref(false)
 const [listRef] = useAutoAnimate()
 const dragIndex = ref<number | null>(null)
@@ -93,6 +121,14 @@ const draggingId = ref<string | null>(null)
 const reorderLock = ref(false)
 const isDragging = ref(false)
 const displayOrder = ref<string[]>([])
+const delayOptions = [
+    { label: 'Off', value: 'off' },
+    { label: 'Instant', value: 'instant' },
+    { label: '5s', value: '5s' },
+    { label: '10s', value: '10s' },
+    { label: '30s', value: '30s' },
+    { label: '1m', value: '1m' },
+]
 
 const rendered = computed(() => {
     const idToEntry = new Map(localChats.value.map((e, i) => [e.id, { entry: e, index: i }]))
@@ -101,17 +137,80 @@ const rendered = computed(() => {
         .filter(Boolean) as { entry: ChatEntry, index: number }[]
 })
 
+const platformsRef = ref<HTMLElement | null>(null)
+
+function onPlatformsBeforeEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = '0px'
+    node.style.opacity = '0'
+    node.style.filter = 'blur(4px)'
+}
+
+function onPlatformsEnter(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    const h = node.scrollHeight
+    node.style.transition = 'height .22s ease, opacity .22s ease, filter .22s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = h + 'px'
+        node.style.opacity = '1'
+        node.style.filter = 'blur(0)'
+        setTimeout(done, 240)
+    })
+}
+
+function onPlatformsAfterEnter(el: Element) {
+    const node = el as HTMLElement
+    node.style.height = 'auto'
+    node.style.overflow = ''
+    node.style.transition = ''
+}
+
+function onPlatformsBeforeLeave(el: Element) {
+    const node = el as HTMLElement
+    node.style.overflow = 'hidden'
+    node.style.height = node.scrollHeight + 'px'
+    node.style.opacity = '1'
+    node.style.filter = 'blur(0)'
+}
+
+function onPlatformsLeave(el: Element, done: () => void) {
+    const node = el as HTMLElement
+    node.style.transition = 'height .2s ease, opacity .2s ease, filter .2s ease'
+    // force reflow
+    void node.offsetHeight
+    requestAnimationFrame(() => {
+        node.style.height = '0px'
+        node.style.opacity = '0'
+        node.style.filter = 'blur(4px)'
+        setTimeout(done, 220)
+    })
+}
+
+function onPlatformsAfterLeave(_el: Element) {
+    // no-op
+}
+
 watch(() => props.open, (v) => {
     if (v) {
         // clone to avoid mutating parent directly
         localChats.value = props.chats?.map(x => ({ ...x, parsed: { ...x.parsed }, locked: !!x.locked })) || []
         if (localChats.value.length === 0) addEntry()
         displayOrder.value = localChats.value.map(e => e.id)
+        // clone settings
+        const s = props.settings || { unloadOnBlur: 'off', unloadPlatforms: ['youtube'] }
+        localSettings.value = { unloadOnBlur: s.unloadOnBlur, unloadPlatforms: Array.isArray(s.unloadPlatforms) ? [...s.unloadPlatforms] : ['youtube'] }
     }
 })
 
 watch(localChats, (val) => {
     if (!isDragging.value) emit('update:chats', val)
+}, { deep: true })
+
+watch(localSettings, (val) => {
+    emit('update:settings', { unloadOnBlur: val.unloadOnBlur, unloadPlatforms: [...val.unloadPlatforms] })
 }, { deep: true })
 
 function addEntry() {
@@ -190,3 +289,26 @@ function onDragEnd() {
 </script>
 
 <!-- Styles intentionally kept global in app.vue to reuse existing modal/theme styling -->
+<style scoped>
+.platform-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.platforms-label {
+    gap: 10px;
+}
+
+.platforms-grid {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.platform-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+</style>

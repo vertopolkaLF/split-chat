@@ -10,10 +10,11 @@
       <div class=" chats-fullscreen" ref="containerRef">
         <template v-for="(entry, idx) in visibleChats" :key="entry.id">
           <div class="chat-card" :style="{ flex: '0 0 ' + (normalizedWidths[entry.id] ?? equalWidth) + '%' }">
-            <div class="frame-wrap" v-if="getEmbed(entry)">
+            <div class="frame-wrap" v-if="getEmbed(entry) && !shouldUnload(entry)">
               <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
               </iframe>
             </div>
+            <div v-else-if="getEmbed(entry) && shouldUnload(entry)" class="placeholder placeholder-unloaded">Unloaded due to tab blur.</div>
             <div v-else class="placeholder">No chat configured.</div>
             <div class="frame-shield" :class="{ visible: isResizing }"></div>
             <div v-if="idx < visibleChats.length - 1" class="col-resizer" @mousedown="startResize(idx, $event)" @dblclick.stop.prevent="equalizeWidths()"></div>
@@ -22,19 +23,21 @@
       </div>
 
       <!-- Settings Modal -->
-      <SettingsModal :open="showSettings" v-model:chats="chats" @close="closeSettings" />
+      <SettingsModal :open="showSettings" v-model:chats="chats" :settings="settings" @update:settings="onUpdateSettings" @close="closeSettings" />
     </div>
   </ClientOnly>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed, watch, nextTick } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
 const colorMode = useColorMode()
 
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
+type UnloadDelay = 'off' | 'instant' | '5s' | '10s' | '30s' | '1m'
+interface SettingsState { unloadOnBlur: UnloadDelay, unloadPlatforms: Platform[] }
 interface ChatEntry {
   id: string
   input: string
@@ -46,13 +49,17 @@ interface ChatEntry {
 
 const STORAGE_KEYS = {
   chats: 'splitchat:chats',
-  widths: 'splitchat:widths'
+  widths: 'splitchat:widths',
+  settings: 'splitchat:settings'
 } as const
 
 const chats = ref<ChatEntry[]>([])
 const showSettings = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const widthsPercent = ref<Record<string, number>>({})
+const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
+const isBlurUnloaded = ref(false)
+let unloadTimer: number | null = null
 // visible chats comes first so other computeds can depend on it safely
 const visibleChats = computed(() => chats.value.filter(e => e.locked && getEmbed(e)))
 const MIN_COL = 10
@@ -140,6 +147,20 @@ onMounted(() => {
   } catch {
     // ignore
   }
+  // hydrate settings
+  try {
+    const sr = localStorage.getItem(STORAGE_KEYS.settings)
+    if (sr) {
+      const parsed = JSON.parse(sr) as SettingsState
+      if (parsed && typeof parsed === 'object') {
+        const allow: Platform[] = ['twitch', 'youtube', 'kick']
+        const up = Array.isArray(parsed.unloadPlatforms) ? parsed.unloadPlatforms.filter(p => allow.includes(p as Platform)) as Platform[] : ['youtube']
+        const allowed: UnloadDelay[] = ['off', 'instant', '5s', '10s', '30s', '1m']
+        const ud = allowed.includes(parsed.unloadOnBlur as UnloadDelay) ? parsed.unloadOnBlur as UnloadDelay : 'off'
+        settings.value = { unloadOnBlur: ud, unloadPlatforms: up.length ? up : ['youtube'] }
+      }
+    }
+  } catch { }
   // init widths equally
   nextTick(() => {
     const ids = visibleChats.value.map(c => c.id)
@@ -155,6 +176,12 @@ onMounted(() => {
     const wr = localStorage.getItem(STORAGE_KEYS.widths)
     if (wr) widthsPercent.value = JSON.parse(wr)
   } catch { }
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  if (unloadTimer) { clearTimeout(unloadTimer); unloadTimer = null }
 })
 
 watch(chats, (val) => {
@@ -163,6 +190,10 @@ watch(chats, (val) => {
   } catch {
     // ignore
   }
+}, { deep: true })
+
+watch(settings, (val) => {
+  try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(val)) } catch { }
 }, { deep: true })
 
 const resolvedYouTubeIds = ref<Record<string, { videoId: string, input: string }>>({})
@@ -224,6 +255,37 @@ function getEmbed(entry: ChatEntry): { url: string, title: string } | null {
     return { url: base, title: 'Kick Chat' }
   }
   return null
+}
+
+function delayToMs(v: UnloadDelay): number | null {
+  switch (v) {
+    case 'off': return null
+    case 'instant': return 0
+    case '5s': return 5000
+    case '10s': return 10000
+    case '30s': return 30000
+    case '1m': return 60000
+  }
+}
+
+function shouldUnload(entry: ChatEntry): boolean {
+  return !!(isBlurUnloaded.value && entry.platform && settings.value.unloadPlatforms.includes(entry.platform))
+}
+
+function onVisibilityChange() {
+  const ms = delayToMs(settings.value.unloadOnBlur)
+  if (ms == null) return
+  if (document.visibilityState === 'hidden') {
+    if (unloadTimer) { clearTimeout(unloadTimer); unloadTimer = null }
+    unloadTimer = window.setTimeout(() => { isBlurUnloaded.value = true }, ms)
+  } else {
+    if (unloadTimer) { clearTimeout(unloadTimer); unloadTimer = null }
+    isBlurUnloaded.value = false
+  }
+}
+
+function onUpdateSettings(next: SettingsState) {
+  settings.value = next
 }
 
 function startResize(index: number, ev: MouseEvent) {
@@ -335,7 +397,7 @@ body {
   align-items: stretch;
   height: 100vh;
   gap: 1px;
-  background-color: #222;
+  background-color: var(--border);
   overflow-x: hidden;
   overflow-y: hidden;
 }
@@ -425,6 +487,10 @@ body {
   border: none;
   color: var(--muted);
   font-size: 14px;
+}
+
+.placeholder-unloaded {
+  color: var(--muted);
 }
 
 /* Modal styles */
@@ -543,7 +609,7 @@ body {
 .segmented {
   display: inline-flex;
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0px;
@@ -604,6 +670,9 @@ select:focus {
 }
 
 button.btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 10px 16px;
   border-radius: 6px;
   border: 1px solid var(--primary);
