@@ -98,7 +98,7 @@
             <div v-else-if="getEmbed(entry) && shouldUnload(entry)" class="placeholder placeholder-unloaded">Unloaded due to tab blur.</div>
             <div v-else class="placeholder">No chat configured.</div>
             <div class="frame-shield" :class="{ visible: isResizing }"></div>
-            <div v-if="idx < visibleChats.length - 1" class="col-resizer" @mousedown="startResize(idx, $event)" @dblclick.stop.prevent="equalizeWidths()"></div>
+            <div v-if="idx < visibleChats.length - 1" title="Double click to equalize widths" class="col-resizer" @mousedown="startResize(idx, $event)" @dblclick.stop.prevent="equalizeWidths()"></div>
           </div>
         </template>
       </div>
