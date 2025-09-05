@@ -6,6 +6,9 @@
         <Icon name="material-symbols:settings" />
       </button>
 
+      <!-- Theo Greeting Component -->
+      <TheoGreeting />
+
       <!-- Start Screen (when no chats are visible) -->
       <div v-if="visibleChats.length === 0" class="start-screen">
         <div class="start-screen-content">
@@ -103,6 +106,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
+import TheoGreeting from '../components/TheoGreeting.vue'
 import { applyPresetToLocalStorage } from '../presets'
 const colorMode = useColorMode()
 
@@ -616,7 +620,7 @@ m {
 .welcome-section h1 {
   font-size: 3rem;
   font-weight: 700;
-  margin-bottom: 24px;
+  margin-bottom: 40px;
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
