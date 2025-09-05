@@ -13,7 +13,14 @@
       <div v-if="visibleChats.length === 0" class="start-screen">
         <div class="start-screen-content">
           <div class="welcome-section">
-            <h1>Welcome to SplitChat</h1>
+            <div class="welcome-section-header">
+              <h1>Welcome to SplitChat</h1>
+              <a target="_blank" href="https://github.com/vertopolkaLF/split-chat" class="github-link">
+                <Icon name="mdi:github" />
+                <span>GitHub</span>
+                <Icon name="tabler:arrow-up-right" />
+              </a>
+            </div>
             <ul class="features-list">
               <li class="feature-item">
                 <Icon name="material-symbols:grid-view" class="feature-icon" />
@@ -617,15 +624,46 @@ m {
   margin-bottom: 60px;
 }
 
+.welcome-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
 .welcome-section h1 {
   font-size: 3rem;
   font-weight: 700;
-  margin-bottom: 40px;
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   text-align: center;
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  background: var(--surface);
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  width: fit-content;
+}
+
+.github-link .iconify {
+  font-size: 1.5rem;
+}
+
+.github-link:hover {
+  transform: translateY(-1px);
+  background: var(--surface-strong);
+  border-color: var(--primary);
 }
 
 .features-list {
