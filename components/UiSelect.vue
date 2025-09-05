@@ -250,5 +250,6 @@ function onMenuAfterLeave(_el: Element) {
 .ui-select__option.active {
     background: var(--primary);
     border-color: var(--border);
+    color: #fff;
 }
 </style>

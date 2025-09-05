@@ -116,6 +116,9 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
         forHandleUrl.searchParams.set('key', apiKey)
         console.log('[api] Resolving channelId via forHandle:', forHandleUrl.toString())
         const fhRes = await fetch(forHandleUrl)
+        if (fhRes.status === 403) {
+            throw new Error('API_KEY_INVALID')
+        }
         if (fhRes.ok) {
             const fhData: any = await fhRes.json()
             resolvedChannelId = fhData?.items?.[0]?.id || null
@@ -131,6 +134,9 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
             searchUrl.searchParams.set('key', apiKey)
             console.log('[api] Searching candidates for handle:', searchUrl.toString())
             const sRes = await fetch(searchUrl)
+            if (sRes.status === 403) {
+                throw new Error('API_KEY_INVALID')
+            }
             if (sRes.ok) {
                 const data: any = await sRes.json()
                 const ids: string[] = (data?.items || []).map((it: any) => it?.id?.channelId).filter(Boolean)
@@ -141,6 +147,9 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
                     chUrl.searchParams.set('key', apiKey)
                     console.log('[api] Verifying handle via channels(snippet):', chUrl.toString())
                     const cRes = await fetch(chUrl)
+                    if (cRes.status === 403) {
+                        throw new Error('API_KEY_INVALID')
+                    }
                     if (cRes.ok) {
                         const cData: any = await cRes.json()
                         const match = (cData?.items || []).find((it: any) => String(it?.snippet?.customUrl || '').toLowerCase() === ('@' + handle).toLowerCase())
@@ -163,6 +172,9 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
         url.searchParams.set('key', apiKey)
         console.log('[api] Searching for channel:', url.toString())
         const res = await fetch(url)
+        if (res.status === 403) {
+            throw new Error('API_KEY_INVALID')
+        }
         if (!res.ok) {
             console.log('[api] Channel search failed:', res.status)
             return null
@@ -187,6 +199,9 @@ async function findLiveVideoIdByChannel(apiKey: string, channelId?: string, hand
 
     console.log('[api] Searching for live video:', searchUrl.toString())
     const res2 = await fetch(searchUrl)
+    if (res2.status === 403) {
+        throw new Error('API_KEY_INVALID')
+    }
     if (!res2.ok) {
         console.log('[api] Live video search failed:', res2.status)
         return null
@@ -206,7 +221,7 @@ export default defineEventHandler(async (event: H3Event): Promise<LiveLookupResp
     console.log('[api] youtube/live input:', input)
 
     const config = useRuntimeConfig()
-    const apiKey = config.youtubeApiKey as string | undefined
+    let apiKey = (query.apiKey as string | undefined)?.trim() || config.youtubeApiKey as string | undefined
     console.log('[api] API key present:', !!apiKey)
 
     if (!apiKey) {
@@ -242,8 +257,19 @@ export default defineEventHandler(async (event: H3Event): Promise<LiveLookupResp
     }
 
     console.log('[api] Searching for live video on channel...')
-    const liveVideoId = await findLiveVideoIdByChannel(apiKey, channelId, handle, vanity, username, queryText)
-    console.log('[api] Final result:', { videoId: liveVideoId })
+    let liveVideoId: string | null = null
+    try {
+        liveVideoId = await findLiveVideoIdByChannel(apiKey, channelId, handle, vanity, username, queryText)
+        console.log('[api] Final result:', { videoId: liveVideoId })
+    } catch (error) {
+        if (error instanceof Error && error.message === 'API_KEY_INVALID' && query.apiKey && config.youtubeApiKey && config.youtubeApiKey !== apiKey) {
+            console.log('[api] User key invalid (403), trying env key as fallback...')
+            liveVideoId = await findLiveVideoIdByChannel(config.youtubeApiKey, channelId, handle, vanity, username, queryText)
+            console.log('[api] Fallback result:', { videoId: liveVideoId })
+        } else {
+            throw error
+        }
+    }
 
     // Cache the result if we have a cache key (channel lookup)
     // only cache positive results; never cache empty/null

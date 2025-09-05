@@ -44,7 +44,7 @@
               </li>
               <li class="feature-item">
                 <Icon name="material-symbols:save" class="feature-icon" />
-                <span>Everything is saved locally</span>
+                <span>Setup once, enjoy forever <m>(everything is saved locally)</m></span>
               </li>
             </ul>
           </div>
@@ -135,7 +135,7 @@ useHead({
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
 type UnloadDelay = 'off' | 'instant' | '5s' | '10s' | '30s' | '1m'
-interface SettingsState { unloadOnBlur: UnloadDelay, unloadPlatforms: Platform[] }
+interface SettingsState { unloadOnBlur: UnloadDelay, unloadPlatforms: Platform[], youtubeApiKey: string }
 interface ChatEntry {
   id: string
   input: string
@@ -155,7 +155,7 @@ const chats = ref<ChatEntry[]>([])
 const showSettings = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const widthsPercent = ref<Record<string, number>>({})
-const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
+const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' })
 const isBlurUnloaded = ref(false)
 const reloadingChats = ref<Set<string>>(new Set())
 const isSettingsOpen = ref(false)
@@ -287,7 +287,8 @@ onMounted(() => {
         const up = Array.isArray(parsed.unloadPlatforms) ? parsed.unloadPlatforms.filter(p => allow.includes(p as Platform)) as Platform[] : ['youtube']
         const allowed: UnloadDelay[] = ['off', 'instant', '5s', '10s', '30s', '1m']
         const ud = allowed.includes(parsed.unloadOnBlur as UnloadDelay) ? parsed.unloadOnBlur as UnloadDelay : 'off'
-        settings.value = { unloadOnBlur: ud, unloadPlatforms: up.length ? up : ['youtube'] }
+        const apiKey = typeof parsed.youtubeApiKey === 'string' ? parsed.youtubeApiKey : ''
+        settings.value = { unloadOnBlur: ud, unloadPlatforms: up.length ? up : ['youtube'], youtubeApiKey: apiKey }
       }
     }
   } catch { }
@@ -346,6 +347,9 @@ watch(chats, async (list) => {
     try {
       resolvingIds.add(id)
       const q = new URLSearchParams({ input: entry.input })
+      if (settings.value.youtubeApiKey) {
+        q.set('apiKey', settings.value.youtubeApiKey)
+      }
       const url = `/api/youtube/live?${q.toString()}`
       const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
       if ((res.headers.get('content-type') || '').includes('application/json')) {
@@ -620,19 +624,21 @@ m {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   background: var(--bg);
   color: var(--text);
-  padding: 20px;
+  padding: 80px 20px;
   box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .start-screen-content {
   width: min(96dvw, 1200px);
+  max-width: 100%;
   text-align: center;
-  margin-bottom: 120px;
-  /* Space for the callout */
+  margin-bottom: 160px;
 }
 
 .welcome-section {
@@ -697,7 +703,8 @@ m {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 24px;
+  min-height: 160px;
+  padding: 18px 24px;
   background: var(--surface);
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -782,7 +789,7 @@ m {
 }
 
 .start-callout {
-  position: absolute;
+  position: fixed;
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
@@ -791,6 +798,7 @@ m {
   align-items: center;
   gap: 12px;
   animation: bounce 2s infinite;
+  z-index: 10;
 }
 
 .callout-text {
@@ -879,9 +887,18 @@ body {
   --text: #e6e6e6;
   --muted: #9aa4af;
   --surface: #151923;
-  --border: #242c3a;
+  --border: #26334b;
   --primary: #4c8dff;
   --primary-strong: #2d6fff;
+}
+
+*,
+::before,
+::after {
+  transition: background .2s, border-color .2s, color .2s;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--surface);
 }
 
 .app {
@@ -1159,7 +1176,7 @@ body {
   max-height: calc(80vh - 80px);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 16px;
 }
 
 .chats-header {
@@ -1252,7 +1269,6 @@ select {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
-  transition: border-color 0.2s ease;
   background: var(--bg);
   color: var(--text);
 }

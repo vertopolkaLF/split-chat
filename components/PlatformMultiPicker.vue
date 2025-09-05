@@ -32,7 +32,7 @@ function toggle(p: Platform) {
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--surface);
+    background: var(--bg);
 }
 
 .picker-item {
@@ -68,7 +68,7 @@ function toggle(p: Platform) {
 }
 
 .picker-item:hover {
-    background: var(--bg);
+    background: var(--surface);
 }
 
 .picker-item.active {

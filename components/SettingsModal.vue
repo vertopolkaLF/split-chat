@@ -3,7 +3,9 @@
         <div v-if="open" class="modal-overlay" @pointerdown.self="onOverlayPointerDown" @pointerup.self="onOverlayPointerUp">
             <div class="modal-content" @click.stop>
                 <div class="modal-header">
-                    <Icon name="material-symbols:forum" size="24" />
+                    <a class="header-github" href="https://github.com/vertopolkaLF/split-chat" target="_blank">
+                        <Icon name="mdi:github" size="24" />
+                    </a>
                     <h3>SplitChat</h3>
                     <button class="close-button" @click="emit('close')">
                         <Icon name="material-symbols:close" />
@@ -11,6 +13,9 @@
                 </div>
 
                 <div class="modal-body">
+                    <div class="section-header">
+                        <h4>Appearance</h4>
+                    </div>
                     <div class="field field-inline">
                         <div class="inline-label">
                             <Icon name="material-symbols:palette" />
@@ -27,6 +32,9 @@
                                 <Icon name="material-symbols:settings-suggest" />
                             </button>
                         </div>
+                    </div>
+                    <div class="section-header">
+                        <h4>App</h4>
                     </div>
                     <div class="field">
                         <div class="chats-header">
@@ -45,9 +53,6 @@
                             </div>
                         </div>
                     </div>
-
-
-
                     <div class="field">
                         <div class="field field-inline">
                             <div class="inline-label">
@@ -64,6 +69,20 @@
                             </div>
                         </Transition>
                     </div>
+                    <div class="section-header">
+                        <h4>Secrets</h4>
+                    </div>
+                    <div class="field">
+                        <div class="field">
+                            <div class="inline-label">
+                                <Icon name="mdi:youtube" />
+                                <span class="fw">YouTube Data API Key</span>
+                                <a class="hint" href="https://console.cloud.google.com/marketplace/product/google/youtube.googleapis.com" target="_blank">Get the key here</a>
+                            </div>
+                            <ApiKeyInput v-model="localSettings.youtubeApiKey" />
+                        </div>
+                    </div>
+
                 </div>
 
             </div>
@@ -79,6 +98,7 @@ import { useColorMode } from '#imports'
 import ChatEntryInput from './ChatEntryInput.vue'
 import UiSelect from './UiSelect.vue'
 import PlatformMultiPicker from './PlatformMultiPicker.vue'
+import ApiKeyInput from './ApiKeyInput.vue'
 
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
@@ -96,6 +116,7 @@ interface ChatEntry {
 interface SettingsState {
     unloadOnBlur: UnloadDelay
     unloadPlatforms: Platform[]
+    youtubeApiKey: string
 }
 
 const props = defineProps<{
@@ -116,7 +137,7 @@ function setTheme(mode: 'light' | 'dark' | 'system') {
 }
 
 const localChats = ref<ChatEntry[]>([])
-const localSettings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'] })
+const localSettings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' })
 const overlayDown = ref(false)
 const [listRef] = useAutoAnimate()
 const dragIndex = ref<number | null>(null)
@@ -205,8 +226,8 @@ watch(() => props.open, (v) => {
         if (localChats.value.length === 0) addEntry()
         displayOrder.value = localChats.value.map(e => e.id)
         // clone settings
-        const s = props.settings || { unloadOnBlur: 'off', unloadPlatforms: ['youtube'] }
-        localSettings.value = { unloadOnBlur: s.unloadOnBlur, unloadPlatforms: Array.isArray(s.unloadPlatforms) ? [...s.unloadPlatforms] : ['youtube'] }
+        const s = props.settings || { unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' }
+        localSettings.value = { unloadOnBlur: s.unloadOnBlur, unloadPlatforms: Array.isArray(s.unloadPlatforms) ? [...s.unloadPlatforms] : ['youtube'], youtubeApiKey: s.youtubeApiKey || '' }
     }
 })
 
@@ -293,7 +314,6 @@ function onDragEnd() {
 }
 </script>
 
-<!-- Styles intentionally kept global in app.vue to reuse existing modal/theme styling -->
 <style scoped>
 .platform-checkboxes {
     display: flex;
@@ -315,5 +335,58 @@ function onDragEnd() {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+}
+
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.section-header:first-child {
+    margin-top: 0;
+}
+
+.section-header:after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 1px;
+    background: var(--border);
+}
+
+.section-header h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fw {
+    width: 100%;
+}
+
+.inline-label .hint,
+.inline-label .iconify {
+    flex-shrink: 0;
+}
+
+.header-github {
+    color: #fff;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.header-github:hover {
+    color: var(--primary);
+    transform: scale(1.1);
 }
 </style>
