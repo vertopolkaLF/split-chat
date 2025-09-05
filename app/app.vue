@@ -111,11 +111,26 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
-import { useColorMode } from '#imports'
+import { useColorMode, useHead } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
 import TheoGreeting from '../components/TheoGreeting.vue'
 import { applyPresetToLocalStorage } from '../presets'
 const colorMode = useColorMode()
+
+// Dynamic SEO and meta tags
+useHead({
+  title: 'SplitChat - Multi-Platform Live Streaming Chat Viewer',
+  meta: [
+    {
+      name: 'description',
+      content: 'View multiple live streaming chat rooms from Twitch, YouTube, and Kick simultaneously. Perfect for multi-streaming enthusiasts and moderators.'
+    },
+    {
+      name: 'keywords',
+      content: 'streaming, twitch, youtube, kick, live chat, multi-streaming, chat viewer, livestream, streaming tools, multi-chat, split screen chat, streaming moderator'
+    }
+  ]
+})
 
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
