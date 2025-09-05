@@ -6,8 +6,66 @@
         <Icon name="material-symbols:settings" />
       </button>
 
+      <!-- Start Screen (when no chats are visible) -->
+      <div v-if="visibleChats.length === 0" class="start-screen">
+        <div class="start-screen-content">
+          <div class="welcome-section">
+            <h1>Welcome to SplitChat</h1>
+            <ul class="features-list">
+              <li class="feature-item">
+                <Icon name="material-symbols:grid-view" class="feature-icon" />
+                <span>Up to 10 chats side by side <m>(technically unlimited)</m></span>
+              </li>
+              <li class="feature-item">
+                <Icon name="material-symbols:smart-display" class="feature-icon" />
+                <span>Automatically detects current YouTube livestreams by username</span>
+              </li>
+              <li class="feature-item">
+                <Icon name="material-symbols:power-settings-new" class="feature-icon" />
+                <span>Unloads chats when tab becomes inactive</span>
+              </li>
+              <li class="feature-item">
+                <Icon name="material-symbols:dark-mode" class="feature-icon" />
+                <span>Light/Dark mode</span>
+              </li>
+              <li class="feature-item">
+                <Icon name="material-symbols:width" class="feature-icon" />
+                <span>Configurable width of each chat</span>
+              </li>
+              <li class="feature-item">
+                <Icon name="material-symbols:save" class="feature-icon" />
+                <span>Everything is saved locally</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="platforms-section">
+            <h2>Supported Platforms</h2>
+            <div class="platforms-grid">
+              <div class="platform-item">
+                <Icon name="mdi:twitch" class="platform-icon twitch" />
+                <span>Twitch</span>
+              </div>
+              <div class="platform-item">
+                <Icon name="mdi:youtube" class="platform-icon youtube" />
+                <span>YouTube</span>
+              </div>
+              <div class="platform-item">
+                <Icon name="simple-icons:kick" class="platform-icon kick" />
+                <span>Kick</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="start-callout">
+          <div class="callout-text">Add chats to start</div>
+          <Icon name="material-symbols:arrow-downward" class="callout-arrow" />
+        </div>
+      </div>
+
       <!-- Full screen chats -->
-      <div class=" chats-fullscreen" ref="containerRef">
+      <div v-else class="chats-fullscreen" ref="containerRef">
         <template v-for="(entry, idx) in visibleChats" :key="entry.id">
           <div class="chat-card" :style="{ flex: '0 0 ' + (normalizedWidths[entry.id] ?? equalWidth) + '%' }">
             <div class="frame-wrap" v-if="getEmbed(entry) && !shouldUnload(entry)">
@@ -524,6 +582,212 @@ function equalizeWidths() {
 </script>
 
 <style>
+m {
+  font-weight: 300;
+  color: var(--muted);
+}
+
+/* Start Screen Styles */
+.start-screen {
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.start-screen-content {
+  width: min(96dvw, 1200px);
+  text-align: center;
+  margin-bottom: 120px;
+  /* Space for the callout */
+}
+
+.welcome-section {
+  margin-bottom: 60px;
+}
+
+.welcome-section h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: center;
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+
+.feature-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+/* .feature-item:nth-child(odd):last-child {
+  grid-column: span 2;
+} */
+
+.feature-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary);
+}
+
+.feature-item span {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 400;
+  text-wrap: balance;
+}
+
+.feature-icon.iconify {
+  font-size: 3rem;
+  color: var(--primary);
+  flex-shrink: 0;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.platforms-section h2 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 30px;
+  color: var(--text);
+}
+
+.platforms-grid {
+  display: flex;
+  justify-content: center;
+  gap: 60px;
+  flex-wrap: wrap;
+}
+
+.platform-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  min-width: 120px;
+}
+
+.platform-icon {
+  font-size: 2.5rem !important;
+  transition: transform 0.2s ease;
+}
+
+.platform-icon:hover {
+  transform: scale(1.1);
+}
+
+.platform-icon.twitch {
+  color: #9146FF;
+}
+
+.platform-icon.youtube {
+  color: #FF0000;
+}
+
+.platform-icon.kick {
+  color: #53FC18;
+}
+
+.platform-item span {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.start-callout {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: bounce 2s infinite;
+}
+
+.callout-text {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--surface);
+  padding: 12px 24px;
+  border-radius: 50px;
+  border: 2px solid var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  font-family: 'Caveat', 'Comic Sans MS', 'Chalkduster', cursive;
+  letter-spacing: 0.5px;
+}
+
+.callout-arrow {
+  font-size: 3rem;
+  color: var(--primary);
+  animation: pulse 2s infinite;
+}
+
+@keyframes bounce {
+
+  0%,
+  20%,
+  50%,
+  80%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  40% {
+    transform: translateX(-50%) translateY(-10px);
+  }
+
+  60% {
+    transform: translateX(-50%) translateY(-5px);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
 /* Reset and base styles */
 * {
   box-sizing: border-box;
