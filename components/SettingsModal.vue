@@ -1,71 +1,74 @@
 <template>
-    <div v-if="open" class="modal-overlay" @pointerdown.self="onOverlayPointerDown" @pointerup.self="onOverlayPointerUp">
-        <div class="modal-content" @click.stop>
-            <div class="modal-header">
-                <h3>Settings</h3>
-                <button class="close-button" @click="emit('close')">
-                    <Icon name="material-symbols:close" />
-                </button>
-            </div>
-
-            <div class="modal-body">
-                <div class="field field-inline">
-                    <div class="inline-label">
-                        <Icon name="material-symbols:palette" />
-                        <span>Theme</span>
-                    </div>
-                    <div class="segmented" role="group" aria-label="Theme toggle">
-                        <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'light' }" @click="setTheme('light')" :aria-pressed="colorMode.preference === 'light'" title="Light">
-                            <Icon name="material-symbols:light-mode" />
-                        </button>
-                        <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'dark' }" @click="setTheme('dark')" :aria-pressed="colorMode.preference === 'dark'" title="Dark">
-                            <Icon name="material-symbols:dark-mode" />
-                        </button>
-                        <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'system' }" @click="setTheme('system')" :aria-pressed="colorMode.preference === 'system'" title="System">
-                            <Icon name="material-symbols:settings-suggest" />
-                        </button>
-                    </div>
-                </div>
-                <div class="field">
-                    <div class="chats-header">
-                        <div class="inline-label chats-header-left">
-                            <Icon name="material-symbols:forum" />
-                            <span>Chats</span>
-                        </div>
-                        <button class="btn" type="button" @click="addEntry">
-                            <Icon name="material-symbols:add" />
-                            <span>Add chat</span>
-                        </button>
-                    </div>
-                    <div class="chat-list" ref="listRef">
-                        <div v-for="({ entry }, idx) in rendered" :key="entry.id" class="chat-row" :draggable="!!entry.locked" @dragstart="onDragStart(idx, $event)" @dragover.prevent="onDragOver(idx, $event)" @drop.prevent="onDrop" @dragend="onDragEnd">
-                            <ChatEntryInput v-model="localChats[localChats.findIndex(e => e.id === entry.id)]" @remove="removeEntry(localChats.findIndex(e => e.id === entry.id))" />
-                        </div>
-                    </div>
+    <Transition name="modal" appear>
+        <div v-if="open" class="modal-overlay" @pointerdown.self="onOverlayPointerDown" @pointerup.self="onOverlayPointerUp">
+            <div class="modal-content" @click.stop>
+                <div class="modal-header">
+                    <Icon name="material-symbols:forum" size="24" />
+                    <h3>SplitChat</h3>
+                    <button class="close-button" @click="emit('close')">
+                        <Icon name="material-symbols:close" />
+                    </button>
                 </div>
 
-
-
-                <div class="field">
+                <div class="modal-body">
                     <div class="field field-inline">
                         <div class="inline-label">
-                            <Icon name="material-symbols:tab" />
-                            <span>Unload chats on tab blur</span>
+                            <Icon name="material-symbols:palette" />
+                            <span>Theme</span>
                         </div>
-                        <UiSelect v-model="localSettings.unloadOnBlur" :options="delayOptions" />
+                        <div class="segmented" role="group" aria-label="Theme toggle">
+                            <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'light' }" @click="setTheme('light')" :aria-pressed="colorMode.preference === 'light'" title="Light">
+                                <Icon name="material-symbols:light-mode" />
+                            </button>
+                            <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'dark' }" @click="setTheme('dark')" :aria-pressed="colorMode.preference === 'dark'" title="Dark">
+                                <Icon name="material-symbols:dark-mode" />
+                            </button>
+                            <button type="button" class="segmented-btn" :class="{ active: colorMode.preference === 'system' }" @click="setTheme('system')" :aria-pressed="colorMode.preference === 'system'" title="System">
+                                <Icon name="material-symbols:settings-suggest" />
+                            </button>
+                        </div>
                     </div>
-                    <Transition @before-enter="onPlatformsBeforeEnter" @enter="onPlatformsEnter" @after-enter="onPlatformsAfterEnter" @before-leave="onPlatformsBeforeLeave" @leave="onPlatformsLeave" @after-leave="onPlatformsAfterLeave">
-                        <div v-if="localSettings.unloadOnBlur !== 'off'" class="platform-checkboxes" ref="platformsRef">
-                            <label class="inline-label platforms-label">Platforms</label>
-                            <PlatformMultiPicker v-model="localSettings.unloadPlatforms" />
-                            <div class="hint">Checked platforms will be unloaded after the selected delay.</div>
+                    <div class="field">
+                        <div class="chats-header">
+                            <div class="inline-label chats-header-left">
+                                <Icon name="material-symbols:forum" />
+                                <span>Chats</span>
+                            </div>
+                            <button class="btn" type="button" @click="addEntry">
+                                <Icon name="material-symbols:add" />
+                                <span>Add chat</span>
+                            </button>
                         </div>
-                    </Transition>
-                </div>
-            </div>
+                        <div class="chat-list" ref="listRef">
+                            <div v-for="({ entry }, idx) in rendered" :key="entry.id" class="chat-row" :draggable="!!entry.locked" @dragstart="onDragStart(idx, $event)" @dragover.prevent="onDragOver(idx, $event)" @drop.prevent="onDrop" @dragend="onDragEnd">
+                                <ChatEntryInput v-model="localChats[localChats.findIndex(e => e.id === entry.id)]" @remove="removeEntry(localChats.findIndex(e => e.id === entry.id))" />
+                            </div>
+                        </div>
+                    </div>
 
+
+
+                    <div class="field">
+                        <div class="field field-inline">
+                            <div class="inline-label">
+                                <Icon name="material-symbols:tab" />
+                                <span>Unload chats on tab blur</span>
+                            </div>
+                            <UiSelect v-model="localSettings.unloadOnBlur" :options="delayOptions" />
+                        </div>
+                        <Transition @before-enter="onPlatformsBeforeEnter" @enter="onPlatformsEnter" @after-enter="onPlatformsAfterEnter" @before-leave="onPlatformsBeforeLeave" @leave="onPlatformsLeave" @after-leave="onPlatformsAfterLeave">
+                            <div v-if="localSettings.unloadOnBlur !== 'off'" class="platform-checkboxes" ref="platformsRef">
+                                <label class="inline-label platforms-label">Platforms</label>
+                                <PlatformMultiPicker v-model="localSettings.unloadPlatforms" />
+                                <div class="hint">Checked platforms will be unloaded after the selected delay.</div>
+                            </div>
+                        </Transition>
+                    </div>
+                </div>
+
+            </div>
         </div>
-    </div>
+    </Transition>
 
 </template>
 

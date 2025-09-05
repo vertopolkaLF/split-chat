@@ -45,6 +45,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
+import { applyPresetToLocalStorage } from '../presets'
 const colorMode = useColorMode()
 
 type Platform = 'twitch' | 'youtube' | 'kick'
@@ -147,19 +148,47 @@ function closeSettings() {
 }
 
 onMounted(() => {
+  // Handle preset links like /:id
+  try {
+    const path = typeof window !== 'undefined' ? (window.location.pathname || '') : ''
+    const m = path.match(/^\/([^\/?#]+)/i)
+    if (m) {
+      const id = decodeURIComponent(m[1])
+      try { applyPresetToLocalStorage(id) } catch { }
+      if (typeof window !== 'undefined') window.location.replace('/')
+      return
+    }
+  } catch { }
   // hydrate chats from localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.chats)
     if (raw) {
       const parsed = JSON.parse(raw) as ChatEntry[]
-      chats.value = parsed.map(e => ({
-        id: e.id || Math.random().toString(36).slice(2),
-        input: e.input || '',
-        platform: e.platform || null,
-        mode: e.mode === 'auto' || e.mode === 'manual' ? e.mode : 'manual',
-        parsed: e.parsed || {},
-        locked: !!e.locked
-      }))
+      chats.value = parsed.map(e => {
+        const entry = {
+          id: e.id || crypto.randomUUID?.() || Math.random().toString(36).slice(2),
+          input: e.input || '',
+          platform: e.platform || null,
+          mode: e.mode === 'auto' || e.mode === 'manual' ? e.mode : 'manual',
+          parsed: e.parsed || {},
+          locked: !!e.locked
+        }
+
+        // Auto-parse new entries from presets (empty parsed + has input)
+        if (entry.input && Object.keys(entry.parsed).length === 0) {
+          const detected = detectPlatform(entry.input)
+          if (detected) {
+            entry.platform = detected.platform
+            entry.mode = 'auto'
+            entry.parsed = detected.parsed
+          } else if (entry.platform) {
+            // Manual parse for known platform
+            applyManualParse(entry)
+          }
+        }
+
+        return entry
+      })
     }
   } catch {
     // ignore
@@ -376,6 +405,70 @@ function onVisibilityChange() {
 
 function onUpdateSettings(next: SettingsState) {
   settings.value = next
+}
+
+// Auto-parsing functions (copied from ChatEntryInput.vue)
+function detectPlatform(input: string): { platform: Platform, parsed: Record<string, any> } | null {
+  let url: URL | null = null
+  try {
+    url = new URL(input)
+  } catch {
+    // allow protocol-less
+    if (/^(www\.)?(twitch\.tv|kick\.com|youtube\.com|youtu\.be)\//i.test(input)) {
+      try { url = new URL('https://' + input) } catch { /* noop */ }
+    }
+  }
+  if (!url) return null
+  const host = url.hostname.replace(/^www\./, '').toLowerCase()
+  const path = url.pathname
+  // Twitch
+  if (host === 'twitch.tv' || host === 'm.twitch.tv') {
+    const channel = path.replace(/^\//, '').split('/')[0]
+    return { platform: 'twitch', parsed: { channel } }
+  }
+  // Kick
+  if (host === 'kick.com') {
+    const channel = path.replace(/^\//, '').split('/')[0]
+    return { platform: 'kick', parsed: { channel } }
+  }
+  // YouTube
+  if (host === 'youtu.be') {
+    const id = path.replace(/^\//, '')
+    if (id) return { platform: 'youtube', parsed: { videoId: id } }
+  }
+  if (host.endsWith('youtube.com')) {
+    const sp = url.searchParams
+    if (path === '/watch') {
+      const v = sp.get('v') || undefined
+      if (v) return { platform: 'youtube', parsed: { videoId: v } }
+    }
+    const liveMatch = path.match(/^\/live\/([\w-]{8,})/)
+    if (liveMatch) return { platform: 'youtube', parsed: { videoId: liveMatch[1] } }
+    const chMatch = path.match(/^\/channel\/([\w-]{8,})/)
+    if (chMatch) return { platform: 'youtube', parsed: { channelId: chMatch[1] } }
+    const handleMatch = path.match(/^\/@([\w.-]{2,})/)
+    if (handleMatch) return { platform: 'youtube', parsed: { handle: handleMatch[1] } }
+    const userMatch = path.match(/^\/(?:user|c)\/([\w.-]{2,})/)
+    if (userMatch) return { platform: 'youtube', parsed: { vanity: userMatch[1] } }
+    return { platform: 'youtube', parsed: {} }
+  }
+  return null
+}
+
+function applyManualParse(entry: ChatEntry) {
+  if (!entry.platform) return
+  if (entry.platform === 'twitch' || entry.platform === 'kick') {
+    entry.parsed = { channel: entry.input.replace(/^@/, '') }
+  } else if (entry.platform === 'youtube') {
+    // Accept @handle or channelId or plain text treated as handle
+    if (entry.input.startsWith('@')) {
+      entry.parsed = { handle: entry.input.slice(1) }
+    } else if (/^UC[\w-]{20,}$/.test(entry.input)) {
+      entry.parsed = { channelId: entry.input }
+    } else {
+      entry.parsed = { handle: entry.input }
+    }
+  }
 }
 
 function startResize(index: number, ev: MouseEvent) {
@@ -922,5 +1015,34 @@ button[disabled] {
   background: var(--surface);
   color: var(--text);
   transform: translateX(-50%);
+}
+
+/* Modal transition animations */
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-active .modal-content,
+.modal-leave-active .modal-content {
+  transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+}
+
+.modal-enter-from .modal-content,
+.modal-leave-to .modal-content {
+  opacity: 0;
+  transform: scale(0.9) translateY(30px);
+  filter: blur(10px);
+}
+
+.modal-enter-to .modal-content {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
 }
 </style>
