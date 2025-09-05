@@ -99,7 +99,7 @@ onMounted(() => {
             const step1Timeout = window.setTimeout(() => {
                 animationStep.value = 1
                 playMessageSound()
-            }, 5000)
+            }, 4000)
 
             // 2s after first step (7s total) - second step
             const step2Timeout = window.setTimeout(() => {
@@ -111,7 +111,7 @@ onMounted(() => {
             const step3Timeout = window.setTimeout(() => {
                 animationStep.value = 3
                 playMessageSound()
-            }, 9000)
+            }, 11000)
 
             timeoutIds = [step1Timeout, step2Timeout, step3Timeout]
         }
@@ -232,6 +232,7 @@ function applyTheoPreset() {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: "Noto Sans";
 }
 
 .message {
@@ -239,6 +240,7 @@ function applyTheoPreset() {
     flex-direction: row;
     align-items: flex-start;
     gap: 6px;
+    font-family: "Noto Sans";
 }
 
 .message-content {
