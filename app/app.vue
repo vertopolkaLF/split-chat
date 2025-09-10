@@ -15,13 +15,13 @@
           <div class="welcome-section">
             <div class="welcome-section-header">
               <h1>Welcome to SplitChat</h1>
-              <p>Multi-Platform Live Streaming Chat Viewer</p>
               <a target="_blank" href="https://github.com/vertopolkaLF/split-chat" class="github-link">
                 <Icon name="mdi:github" />
                 <span>GitHub</span>
                 <Icon name="tabler:arrow-up-right" />
               </a>
             </div>
+            <p>Multi-Platform Live Streaming Chat Viewer</p>
             <ul class="features-list">
               <li class="feature-item">
                 <Icon name="material-symbols:grid-view" class="feature-icon" />
