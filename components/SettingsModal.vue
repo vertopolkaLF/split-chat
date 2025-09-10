@@ -53,6 +53,20 @@
                     <div class="field">
                         <div class="field field-inline">
                             <div class="inline-label">
+                                <Icon name="mdi:account" />
+                                <span>Show username</span>
+                            </div>
+                            <div class="segmented" role="group" aria-label="Show chat username toggle">
+                                <button type="button" class="segmented-btn" :class="{ active: !localSettings.showUsernames }" @click="localSettings.showUsernames = false" :aria-pressed="!localSettings.showUsernames" title="Off">
+                                    <Icon name="material-symbols:close" />
+                                </button>
+                                <button type="button" class="segmented-btn" :class="{ active: !!localSettings.showUsernames }" @click="localSettings.showUsernames = true" :aria-pressed="!!localSettings.showUsernames" title="On">
+                                    <Icon name="material-symbols:check" />
+                                </button>
+                            </div>
+                        </div>
+                        <div class="field field-inline">
+                            <div class="inline-label">
                                 <Icon name="material-symbols:tab" />
                                 <span>Unload chats on tab blur</span>
                             </div>
@@ -116,6 +130,7 @@ interface SettingsState {
     unloadOnBlur: UnloadDelay
     unloadPlatforms: Platform[]
     youtubeApiKey: string
+    showUsernames: boolean
 }
 
 const props = defineProps<{
@@ -136,7 +151,7 @@ function setTheme(mode: 'light' | 'dark' | 'system') {
 }
 
 const localChats = ref<ChatEntry[]>([])
-const localSettings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' })
+const localSettings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '', showUsernames: false })
 const overlayDown = ref(false)
 const [listRef] = useAutoAnimate()
 const dragIndex = ref<number | null>(null)
@@ -225,8 +240,13 @@ watch(() => props.open, (v) => {
         if (localChats.value.length === 0) addEntry()
         displayOrder.value = localChats.value.map(e => e.id)
         // clone settings
-        const s = props.settings || { unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' }
-        localSettings.value = { unloadOnBlur: s.unloadOnBlur, unloadPlatforms: Array.isArray(s.unloadPlatforms) ? [...s.unloadPlatforms] : ['youtube'], youtubeApiKey: s.youtubeApiKey || '' }
+        const s = props.settings || { unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '', showUsernames: false }
+        localSettings.value = {
+            unloadOnBlur: s.unloadOnBlur,
+            unloadPlatforms: Array.isArray(s.unloadPlatforms) ? [...s.unloadPlatforms] : ['youtube'],
+            youtubeApiKey: s.youtubeApiKey || '',
+            showUsernames: !!s.showUsernames
+        }
     }
 })
 
@@ -235,7 +255,7 @@ watch(localChats, (val) => {
 }, { deep: true })
 
 watch(localSettings, (val) => {
-    emit('update:settings', { unloadOnBlur: val.unloadOnBlur, unloadPlatforms: [...val.unloadPlatforms] })
+    emit('update:settings', { unloadOnBlur: val.unloadOnBlur, unloadPlatforms: [...val.unloadPlatforms], youtubeApiKey: val.youtubeApiKey, showUsernames: !!val.showUsernames })
 }, { deep: true })
 
 function addEntry() {

@@ -2,7 +2,7 @@
   <ClientOnly>
     <div class="app">
       <!-- Fixed settings button -->
-      <button class="settings-button" :class="settingsBtnClass" :style="settingsBtnStyle" ref="settingsBtnRef" @pointerdown="onSettingsPointerDown" @click="onSettingsClick" title="Drag to move">
+      <button class="settings-button" :class="settingsBtnClass" :style="settingsBtnStyle" ref="settingsBtnRef" @pointerdown="onSettingsPointerDown" @mousedown="onSettingsMouseDown" @click="onSettingsClick" title="Drag to move, middle-click to reset position">
         <Icon name="material-symbols:settings" />
       </button>
 
@@ -24,7 +24,7 @@
             <p class="welcome-section-description">Multi-Platform Live Streaming Chat Viewer</p>
             <ul class="features-list">
               <li class="feature-item">
-                <Icon name="material-symbols:grid-view" class="feature-icon" />
+                <Icon name="material-symbols:view-column" class=" feature-icon" />
                 <span>Up to 10 chats side by side <m>(technically unlimited)</m></span>
               </li>
               <li class="feature-item">
@@ -41,7 +41,7 @@
               </li>
               <li class="feature-item">
                 <Icon name="material-symbols:width" class="feature-icon" />
-                <span>Configurable width of each chat</span>
+                <span>Resizeable chats</span>
               </li>
               <li class="feature-item">
                 <Icon name="material-symbols:save" class="feature-icon" />
@@ -78,29 +78,7 @@
       <!-- Full screen chats -->
       <div v-else class="chats-fullscreen" ref="containerRef">
         <template v-for="(entry, idx) in visibleChats" :key="entry.id">
-          <div class="chat-card" :style="{ flex: '0 0 ' + (normalizedWidths[entry.id] ?? equalWidth) + '%' }">
-            <div class="frame-wrap" v-if="getEmbed(entry) && !shouldUnload(entry)">
-              <iframe :src="getEmbed(entry)!.url" frameborder="0" scrolling="no" height="100%" width="100%" :title="getEmbed(entry)!.title" allowfullscreen>
-              </iframe>
-            </div>
-            <div v-else-if="isChatConfigured(entry)" class="placeholder placeholder-configured">
-              <div class="placeholder-content">
-                <div class="platform-logo">
-                  <Icon :name="getPlatformIcon(entry.platform!)" />
-                  <div class="username">{{ getDisplayUsername(entry) }}</div>
-                </div>
-                <div class="placeholder-text">there will be {{ getDisplayUsername(entry) }}'s chat</div>
-                <button class="reload-btn" @click="reloadChat(entry)" :disabled="reloadingChats.has(entry.id)" :title="reloadingChats.has(entry.id) ? 'Loading...' : 'Refresh chat'">
-                  <Icon name="material-symbols:refresh" :class="{ spinning: reloadingChats.has(entry.id) }" />
-                  <span>{{ reloadingChats.has(entry.id) ? 'Loading...' : 'Refresh' }}</span>
-                </button>
-              </div>
-            </div>
-            <div v-else-if="getEmbed(entry) && shouldUnload(entry)" class="placeholder placeholder-unloaded">Unloaded due to tab blur.</div>
-            <div v-else class="placeholder">No chat configured.</div>
-            <div class="frame-shield" :class="{ visible: isResizing }"></div>
-            <div v-if="idx < visibleChats.length - 1" title="Double click to equalize widths" class="col-resizer" @mousedown="startResize(idx, $event)" @dblclick.stop.prevent="equalizeWidths()"></div>
-          </div>
+          <ChatCard :style="{ flex: '0 0 ' + (normalizedWidths[entry.id] ?? equalWidth) + '%' }" :entry="entry" :embed="getEmbed(entry)" :should-unload="shouldUnload(entry)" :is-configured="isChatConfigured(entry)" :platform-icon="getPlatformIcon(entry.platform!)" :display-username="getDisplayUsername(entry)" :reloading="reloadingChats.has(entry.id)" :is-resizing="isResizing" :index="idx" :show-resizer="idx < visibleChats.length - 1" :show-username="settings.showUsernames" :stream-url="getStreamUrl(entry)" @reload="reloadChat" @startResize="startResize" @equalizeWidths="equalizeWidths" />
         </template>
       </div>
 
@@ -114,6 +92,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode, useHead } from '#imports'
 import SettingsModal from '../components/SettingsModal.vue'
+import ChatCard from '../components/ChatCard.vue'
 import TheoGreeting from '../components/TheoGreeting.vue'
 import { applyPresetToLocalStorage } from '../presets'
 const colorMode = useColorMode()
@@ -136,7 +115,7 @@ useHead({
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
 type UnloadDelay = 'off' | 'instant' | '5s' | '10s' | '30s' | '1m'
-interface SettingsState { unloadOnBlur: UnloadDelay, unloadPlatforms: Platform[], youtubeApiKey: string }
+interface SettingsState { unloadOnBlur: UnloadDelay, unloadPlatforms: Platform[], youtubeApiKey: string, showUsernames: boolean }
 interface ChatEntry {
   id: string
   input: string
@@ -156,7 +135,7 @@ const chats = ref<ChatEntry[]>([])
 const showSettings = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const widthsPercent = ref<Record<string, number>>({})
-const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '' })
+const settings = ref<SettingsState>({ unloadOnBlur: 'off', unloadPlatforms: ['youtube'], youtubeApiKey: '', showUsernames: false })
 const isBlurUnloaded = ref(false)
 const reloadingChats = ref<Set<string>>(new Set())
 const isSettingsOpen = ref(false)
@@ -164,8 +143,9 @@ let unloadTimer: number | null = null
 // Settings button drag + position
 const SETTINGS_POS_KEY = 'splitchat:settings-position'
 type Edge = 'top' | 'right' | 'bottom' | 'left'
-type AxisSide = 'left' | 'right' | 'top' | 'bottom'
-interface SettingsButtonAnchor { edge: Edge, side: AxisSide, offset: number }
+// side: for top/bottom -> 'left' | 'right' | 'center'; for left/right -> 'top' | 'bottom' | 'middle'
+type AxisSide = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'middle'
+interface SettingsButtonAnchor { edge: Edge, side: AxisSide, offset?: number }
 const settingsBtnRef = ref<HTMLElement | null>(null)
 const settingsBtnAnchor = ref<SettingsButtonAnchor | null>(null)
 const isDraggingSettings = ref(false)
@@ -180,33 +160,76 @@ const settingsBtnClass = computed(() => {
     'edge-right': edge === 'right',
     'edge-bottom': edge === 'bottom',
     'edge-left': edge === 'left',
+    'centered-x': settingsBtnAnchor.value?.side === 'center',
+    'centered-y': settingsBtnAnchor.value?.side === 'middle',
     'dragging': isDraggingSettings.value
   }
 })
 const settingsBtnStyle = computed<Record<string, string>>(() => {
   const style: Record<string, string> = {}
-  if (isDraggingSettings.value && dragPos.value) {
-    style.top = dragPos.value.top + 'px'
-    style.left = dragPos.value.left + 'px'
+  if (isDraggingSettings.value && dragPos.value && settingsBtnRef.value) {
+    // Keep visually attached to nearest edge while dragging
+    const btn = settingsBtnRef.value
+    const w = btn.offsetWidth || 0
+    const h = btn.offsetHeight || 0
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const rectLeft = dragPos.value.left
+    const rectTop = dragPos.value.top
+    const distances: Record<Edge, number> = {
+      top: rectTop,
+      right: vw - (rectLeft + w),
+      bottom: vh - (rectTop + h),
+      left: rectLeft
+    }
+    const edge = (Object.entries(distances).sort((a, b) => a[1] - b[1])[0][0]) as Edge
+    // unset all
+    style.top = 'auto'
     style.right = 'auto'
     style.bottom = 'auto'
+    style.left = 'auto'
     style.transform = 'none'
+    if (edge === 'top') style.top = '0px'
+    if (edge === 'right') style.right = '0px'
+    if (edge === 'bottom') style.bottom = '0px'
+    if (edge === 'left') style.left = '0px'
+    if (edge === 'top' || edge === 'bottom') {
+      const leftDist = rectLeft
+      const rightDist = vw - (rectLeft + w)
+      const side: 'left' | 'right' = leftDist <= rightDist ? 'left' : 'right'
+      style[side] = Math.max(0, Math.round(side === 'left' ? leftDist : rightDist)) + 'px'
+    } else {
+      const topDist = rectTop
+      const bottomDist = vh - (rectTop + h)
+      const side: 'top' | 'bottom' = topDist <= bottomDist ? 'top' : 'bottom'
+      style[side] = Math.max(0, Math.round(side === 'top' ? topDist : bottomDist)) + 'px'
+    }
     return style
   }
   const anchor = settingsBtnAnchor.value
   if (anchor) {
-    style.transform = 'none'
     // unset all sides first to avoid conflicts with base CSS
     style.top = 'auto'
     style.right = 'auto'
     style.bottom = 'auto'
     style.left = 'auto'
+    style.transform = 'none'
+    // anchor to nearest edge
     if (anchor.edge === 'top') style.top = '0px'
     if (anchor.edge === 'right') style.right = '0px'
     if (anchor.edge === 'bottom') style.bottom = '0px'
     if (anchor.edge === 'left') style.left = '0px'
-    // set offset from chosen side
-    style[anchor.side] = Math.max(0, Math.round(anchor.offset)) + 'px'
+    // offset or center/middle
+    if (anchor.side === 'left' || anchor.side === 'right' || anchor.side === 'top' || anchor.side === 'bottom') {
+      const off = Math.max(0, Math.round((anchor.offset || 0))) + 'px'
+      style[anchor.side] = off
+    } else if (anchor.side === 'center') {
+      style.left = '50%'
+      style.transform = 'translateX(-50%)'
+    } else if (anchor.side === 'middle') {
+      style.top = '50%'
+      style.transform = 'translateY(-50%)'
+    }
   }
   return style
 })
@@ -331,14 +354,15 @@ onMounted(() => {
   try {
     const sr = localStorage.getItem(STORAGE_KEYS.settings)
     if (sr) {
-      const parsed = JSON.parse(sr) as SettingsState
+      const parsed = JSON.parse(sr) as Partial<SettingsState>
       if (parsed && typeof parsed === 'object') {
         const allow: Platform[] = ['twitch', 'youtube', 'kick']
         const up = Array.isArray(parsed.unloadPlatforms) ? parsed.unloadPlatforms.filter(p => allow.includes(p as Platform)) as Platform[] : ['youtube']
         const allowed: UnloadDelay[] = ['off', 'instant', '5s', '10s', '30s', '1m']
         const ud = allowed.includes(parsed.unloadOnBlur as UnloadDelay) ? parsed.unloadOnBlur as UnloadDelay : 'off'
         const apiKey = typeof parsed.youtubeApiKey === 'string' ? parsed.youtubeApiKey : ''
-        settings.value = { unloadOnBlur: ud, unloadPlatforms: up.length ? up : ['youtube'], youtubeApiKey: apiKey }
+        const showUsernames = typeof parsed.showUsernames === 'boolean' ? parsed.showUsernames : false
+        settings.value = { unloadOnBlur: ud, unloadPlatforms: up.length ? up : ['youtube'], youtubeApiKey: apiKey, showUsernames }
       }
     }
   } catch { }
@@ -362,15 +386,12 @@ onMounted(() => {
   try {
     const raw = localStorage.getItem(SETTINGS_POS_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as SettingsButtonAnchor
-      if (
-        parsed &&
-        (parsed.edge === 'top' || parsed.edge === 'right' || parsed.edge === 'bottom' || parsed.edge === 'left') &&
-        (parsed.side === 'left' || parsed.side === 'right' || parsed.side === 'top' || parsed.side === 'bottom') &&
-        typeof parsed.offset === 'number' && parsed.offset >= 0
-      ) {
-        settingsBtnAnchor.value = parsed
-      }
+      const parsed = JSON.parse(raw) as Partial<SettingsButtonAnchor>
+      const validEdge = parsed && (parsed.edge === 'top' || parsed.edge === 'right' || parsed.edge === 'bottom' || parsed.edge === 'left')
+      const validSide = parsed && (parsed.side === 'left' || parsed.side === 'right' || parsed.side === 'top' || parsed.side === 'bottom' || parsed.side === 'center' || parsed.side === 'middle')
+      const needsOffset = parsed && (parsed.side === 'left' || parsed.side === 'right' || parsed.side === 'top' || parsed.side === 'bottom')
+      const validOffset = !needsOffset || (typeof parsed?.offset === 'number' && (parsed!.offset as number) >= 0)
+      if (validEdge && validSide && validOffset) settingsBtnAnchor.value = parsed as SettingsButtonAnchor
     }
   } catch { }
 })
@@ -455,6 +476,29 @@ function getEmbed(entry: ChatEntry): { url: string, title: string } | null {
   if (entry.platform === 'kick' && entry.parsed?.channel) {
     const base = `https://kick.com/popout/${encodeURIComponent(entry.parsed.channel)}/chat`
     return { url: base, title: 'Kick Chat' }
+  }
+  return null
+}
+
+function getStreamUrl(entry: ChatEntry): string | null {
+  if (!entry.platform) return null
+  if (entry.platform === 'twitch') {
+    const channel = entry.parsed?.channel || entry.input
+    if (!channel) return null
+    return `https://www.twitch.tv/${encodeURIComponent(channel)}`
+  }
+  if (entry.platform === 'kick') {
+    const channel = entry.parsed?.channel || entry.input
+    if (!channel) return null
+    return `https://kick.com/${encodeURIComponent(channel)}`
+  }
+  if (entry.platform === 'youtube') {
+    const id = entry.parsed?.videoId || resolvedYouTubeIds.value[entry.id]?.videoId
+    if (id) return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`
+    const handle = entry.parsed?.handle || entry.parsed?.vanity
+    if (handle) return `https://www.youtube.com/@${handle.replace(/^@/, '')}`
+    if (entry.parsed?.channelId) return `https://www.youtube.com/channel/${entry.parsed.channelId}`
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(getDisplayUsername(entry))}`
   }
   return null
 }
@@ -676,6 +720,8 @@ function equalizeWidths() {
 }
 
 function onSettingsPointerDown(ev: PointerEvent) {
+  // Only start drag on left click or touch/pen primary
+  if (typeof ev.button === 'number' && ev.button !== 0) return
   if (!settingsBtnRef.value) return
   const btn = settingsBtnRef.value
   try { btn.setPointerCapture(ev.pointerId) } catch { }
@@ -722,20 +768,35 @@ function onSettingsPointerUp(_ev: PointerEvent) {
     left: rect.left
   }
   const edge = (Object.entries(distances).sort((a, b) => a[1] - b[1])[0][0]) as Edge
+  const MAGNET = 20
   let side: AxisSide
-  let offset: number
+  let offset: number | undefined
   if (edge === 'top' || edge === 'bottom') {
-    const leftDist = rect.left
-    const rightDist = vw - rect.right
-    side = leftDist <= rightDist ? 'left' : 'right'
-    offset = side === 'left' ? leftDist : rightDist
+    const buttonCenterX = rect.left + rect.width / 2
+    const dxToCenter = Math.abs(buttonCenterX - vw / 2)
+    if (dxToCenter <= MAGNET) {
+      side = 'center'
+      offset = undefined
+    } else {
+      const leftDist = rect.left
+      const rightDist = vw - rect.right
+      side = leftDist <= rightDist ? 'left' : 'right'
+      offset = side === 'left' ? leftDist : rightDist
+    }
   } else {
-    const topDist = rect.top
-    const bottomDist = vh - rect.bottom
-    side = topDist <= bottomDist ? 'top' : 'bottom'
-    offset = side === 'top' ? topDist : bottomDist
+    const buttonCenterY = rect.top + rect.height / 2
+    const dyToCenter = Math.abs(buttonCenterY - vh / 2)
+    if (dyToCenter <= MAGNET) {
+      side = 'middle'
+      offset = undefined
+    } else {
+      const topDist = rect.top
+      const bottomDist = vh - rect.bottom
+      side = topDist <= bottomDist ? 'top' : 'bottom'
+      offset = side === 'top' ? topDist : bottomDist
+    }
   }
-  settingsBtnAnchor.value = { edge, side, offset: Math.max(0, Math.round(offset)) }
+  settingsBtnAnchor.value = { edge, side, ...(offset != null ? { offset: Math.max(0, Math.round(offset)) } : {}) }
   isDraggingSettings.value = false
   dragPos.value = null
   try { localStorage.setItem(SETTINGS_POS_KEY, JSON.stringify(settingsBtnAnchor.value)) } catch { }
@@ -753,6 +814,19 @@ function onSettingsClick(ev: MouseEvent) {
     return
   }
   openSettings()
+}
+
+function onSettingsMouseDown(ev: MouseEvent) {
+  // Middle mouse button (button === 1) -> move to bottom center
+  if (ev.button === 1) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    settingsBtnAnchor.value = { edge: 'bottom', side: 'center' }
+    try { localStorage.setItem(SETTINGS_POS_KEY, JSON.stringify(settingsBtnAnchor.value)) } catch { }
+    // Prevent opening after middle click
+    suppressNextSettingsClick = true
+    setTimeout(() => { suppressNextSettingsClick = false }, 100)
+  }
 }
 </script>
 
@@ -1082,6 +1156,7 @@ body {
   position: relative;
   user-select: none;
 }
+
 
 .chat-card h2 {
   margin: 0;
@@ -1503,7 +1578,7 @@ button[disabled] {
 .settings-button:hover {
   background: var(--surface);
   color: var(--text);
-  transform: translateX(-50%);
+  /* keep current transform */
 }
 
 .settings-button.dragging {
