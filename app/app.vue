@@ -21,7 +21,7 @@
                 <Icon name="tabler:arrow-up-right" />
               </a>
             </div>
-            <p>Multi-Platform Live Streaming Chat Viewer</p>
+            <p class="welcome-section-description">Multi-Platform Live Streaming Chat Viewer</p>
             <ul class="features-list">
               <li class="feature-item">
                 <Icon name="material-symbols:grid-view" class="feature-icon" />
@@ -795,7 +795,14 @@ m {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  margin-bottom: 40px;
+  margin-bottom: 16px;
+}
+
+.welcome-section-description {
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--text);
+  margin-bottom: 30px;
 }
 
 .welcome-section h1 {
@@ -942,12 +949,12 @@ m {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  animation: bounce 2s infinite;
+  animation: bounce 10s infinite;
   z-index: 10;
 }
 
 .callout-text {
-  font-size: 2rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: var(--primary);
   background: var(--surface);
@@ -955,7 +962,6 @@ m {
   border-radius: 50px;
   border: 2px solid var(--primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  font-family: 'Caveat', 'Comic Sans MS', 'Chalkduster', cursive;
   letter-spacing: 0.5px;
 }
 
