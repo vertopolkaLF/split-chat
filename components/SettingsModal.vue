@@ -13,9 +13,6 @@
                 </div>
 
                 <div class="modal-body">
-                    <div class="section-header">
-                        <h4>Appearance</h4>
-                    </div>
                     <div class="field field-inline">
                         <div class="inline-label">
                             <Icon name="material-symbols:palette" />
@@ -63,7 +60,7 @@
                         </div>
                         <Transition @before-enter="onPlatformsBeforeEnter" @enter="onPlatformsEnter" @after-enter="onPlatformsAfterEnter" @before-leave="onPlatformsBeforeLeave" @leave="onPlatformsLeave" @after-leave="onPlatformsAfterLeave">
                             <div v-if="localSettings.unloadOnBlur !== 'off'" class="platform-checkboxes" ref="platformsRef">
-                                <label class="inline-label platforms-label">Platforms</label>
+                                <!-- <label class="inline-label platforms-label">Platforms</label> -->
                                 <PlatformMultiPicker v-model="localSettings.unloadPlatforms" />
                                 <div class="hint">Checked platforms will be unloaded after the selected delay.</div>
                             </div>
@@ -77,9 +74,11 @@
                             <div class="inline-label">
                                 <Icon name="mdi:youtube" />
                                 <span class="fw">YouTube Data API Key</span>
-                                <a class="hint" href="https://console.cloud.google.com/marketplace/product/google/youtube.googleapis.com" target="_blank">Get the key here</a>
+                                <a class="hint" href="https://console.cloud.google.com/marketplace/product/google/youtube.googleapis.com" target="_blank">Get from Google Cloud</a>
                             </div>
                             <ApiKeyInput v-model="localSettings.youtubeApiKey" />
+                            <div class="hint">Used for auto-detecting current livestream by username</div>
+                            <div class="hint">We recommend using your own key to use this feature without rate limiting</div>
                         </div>
                     </div>
 

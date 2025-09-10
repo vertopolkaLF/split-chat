@@ -1,6 +1,6 @@
 <template>
     <div class="ui-select" ref="root">
-        <button type="button" class="ui-select__button" :style="{ minWidth: buttonMinWidth + 'px' }" :aria-expanded="open ? 'true' : 'false'" :disabled="disabled" @click="toggle">
+        <button type="button" class="ui-select__button" :class="open ? 'open' : 'closed'" :style="{ minWidth: buttonMinWidth + 'px' }" :aria-expanded="open ? 'true' : 'false'" :disabled="disabled" @click="toggle">
             <span>{{ selectedLabel }}</span>
             <Icon name="material-symbols:expand-more" class="ui-select__chevron" />
         </button>
@@ -214,7 +214,13 @@ function onMenuAfterLeave(_el: Element) {
 .ui-select__chevron {
     font-size: 1.2rem;
     opacity: .8;
+    transition: .2s;
 }
+
+.ui-select__button.open .ui-select__chevron {
+    transform: rotate(-180deg);
+}
+
 
 .ui-select__menu {
     position: absolute;

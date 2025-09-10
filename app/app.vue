@@ -2,7 +2,7 @@
   <ClientOnly>
     <div class="app">
       <!-- Fixed settings button -->
-      <button class="settings-button" @click="openSettings" title="Settings">
+      <button class="settings-button" :class="settingsBtnClass" :style="settingsBtnStyle" ref="settingsBtnRef" @pointerdown="onSettingsPointerDown" @click="onSettingsClick" title="Drag to move">
         <Icon name="material-symbols:settings" />
       </button>
 
@@ -160,6 +160,55 @@ const isBlurUnloaded = ref(false)
 const reloadingChats = ref<Set<string>>(new Set())
 const isSettingsOpen = ref(false)
 let unloadTimer: number | null = null
+// Settings button drag + position
+const SETTINGS_POS_KEY = 'splitchat:settings-position'
+type Edge = 'top' | 'right' | 'bottom' | 'left'
+type AxisSide = 'left' | 'right' | 'top' | 'bottom'
+interface SettingsButtonAnchor { edge: Edge, side: AxisSide, offset: number }
+const settingsBtnRef = ref<HTMLElement | null>(null)
+const settingsBtnAnchor = ref<SettingsButtonAnchor | null>(null)
+const isDraggingSettings = ref(false)
+const dragStart = ref<{ startX: number, startY: number, startLeft: number, startTop: number } | null>(null)
+const dragPos = ref<{ left: number, top: number } | null>(null)
+let settingsDragMoved = false
+let suppressNextSettingsClick = false
+const settingsBtnClass = computed(() => {
+  const edge = settingsBtnAnchor.value?.edge || 'bottom'
+  return {
+    'edge-top': edge === 'top',
+    'edge-right': edge === 'right',
+    'edge-bottom': edge === 'bottom',
+    'edge-left': edge === 'left',
+    'dragging': isDraggingSettings.value
+  }
+})
+const settingsBtnStyle = computed<Record<string, string>>(() => {
+  const style: Record<string, string> = {}
+  if (isDraggingSettings.value && dragPos.value) {
+    style.top = dragPos.value.top + 'px'
+    style.left = dragPos.value.left + 'px'
+    style.right = 'auto'
+    style.bottom = 'auto'
+    style.transform = 'none'
+    return style
+  }
+  const anchor = settingsBtnAnchor.value
+  if (anchor) {
+    style.transform = 'none'
+    // unset all sides first to avoid conflicts with base CSS
+    style.top = 'auto'
+    style.right = 'auto'
+    style.bottom = 'auto'
+    style.left = 'auto'
+    if (anchor.edge === 'top') style.top = '0px'
+    if (anchor.edge === 'right') style.right = '0px'
+    if (anchor.edge === 'bottom') style.bottom = '0px'
+    if (anchor.edge === 'left') style.left = '0px'
+    // set offset from chosen side
+    style[anchor.side] = Math.max(0, Math.round(anchor.offset)) + 'px'
+  }
+  return style
+})
 // visible chats comes first so other computeds can depend on it safely
 const visibleChats = computed(() => chats.value.filter(e => e.locked && (getEmbed(e) || isChatConfigured(e))))
 const MIN_COL = 10
@@ -308,6 +357,21 @@ onMounted(() => {
     if (wr) widthsPercent.value = JSON.parse(wr)
   } catch { }
   document.addEventListener('visibilitychange', onVisibilityChange)
+  // hydrate settings button position
+  try {
+    const raw = localStorage.getItem(SETTINGS_POS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as SettingsButtonAnchor
+      if (
+        parsed &&
+        (parsed.edge === 'top' || parsed.edge === 'right' || parsed.edge === 'bottom' || parsed.edge === 'left') &&
+        (parsed.side === 'left' || parsed.side === 'right' || parsed.side === 'top' || parsed.side === 'bottom') &&
+        typeof parsed.offset === 'number' && parsed.offset >= 0
+      ) {
+        settingsBtnAnchor.value = parsed
+      }
+    }
+  } catch { }
 })
 
 onBeforeUnmount(() => {
@@ -608,6 +672,86 @@ function equalizeWidths() {
   }
   widthsPercent.value = map
   try { localStorage.setItem(STORAGE_KEYS.widths, JSON.stringify(widthsPercent.value)) } catch { }
+}
+
+function onSettingsPointerDown(ev: PointerEvent) {
+  if (!settingsBtnRef.value) return
+  const btn = settingsBtnRef.value
+  try { btn.setPointerCapture(ev.pointerId) } catch { }
+  const rect = btn.getBoundingClientRect()
+  dragStart.value = { startX: ev.clientX, startY: ev.clientY, startLeft: rect.left, startTop: rect.top }
+  isDraggingSettings.value = true
+  dragPos.value = { left: rect.left, top: rect.top }
+  settingsDragMoved = false
+  window.addEventListener('pointermove', onSettingsPointerMove)
+  window.addEventListener('pointerup', onSettingsPointerUp, { once: true })
+}
+
+function onSettingsPointerMove(ev: PointerEvent) {
+  if (!isDraggingSettings.value || !dragStart.value || !settingsBtnRef.value) return
+  const btn = settingsBtnRef.value
+  const w = btn.offsetWidth || 0
+  const h = btn.offsetHeight || 0
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  let left = dragStart.value.startLeft + (ev.clientX - dragStart.value.startX)
+  let top = dragStart.value.startTop + (ev.clientY - dragStart.value.startY)
+  if (!settingsDragMoved) {
+    const dx = Math.abs(ev.clientX - dragStart.value.startX)
+    const dy = Math.abs(ev.clientY - dragStart.value.startY)
+    if (dx > 3 || dy > 3) settingsDragMoved = true
+  }
+  // clamp inside viewport
+  left = Math.max(0, Math.min(vw - w, left))
+  top = Math.max(0, Math.min(vh - h, top))
+  dragPos.value = { left, top }
+}
+
+function onSettingsPointerUp(_ev: PointerEvent) {
+  window.removeEventListener('pointermove', onSettingsPointerMove)
+  if (!settingsBtnRef.value) { isDraggingSettings.value = false; dragPos.value = null; return }
+  const btn = settingsBtnRef.value
+  const rect = btn.getBoundingClientRect()
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const distances: Record<Edge, number> = {
+    top: rect.top,
+    right: vw - rect.right,
+    bottom: vh - rect.bottom,
+    left: rect.left
+  }
+  const edge = (Object.entries(distances).sort((a, b) => a[1] - b[1])[0][0]) as Edge
+  let side: AxisSide
+  let offset: number
+  if (edge === 'top' || edge === 'bottom') {
+    const leftDist = rect.left
+    const rightDist = vw - rect.right
+    side = leftDist <= rightDist ? 'left' : 'right'
+    offset = side === 'left' ? leftDist : rightDist
+  } else {
+    const topDist = rect.top
+    const bottomDist = vh - rect.bottom
+    side = topDist <= bottomDist ? 'top' : 'bottom'
+    offset = side === 'top' ? topDist : bottomDist
+  }
+  settingsBtnAnchor.value = { edge, side, offset: Math.max(0, Math.round(offset)) }
+  isDraggingSettings.value = false
+  dragPos.value = null
+  try { localStorage.setItem(SETTINGS_POS_KEY, JSON.stringify(settingsBtnAnchor.value)) } catch { }
+  if (settingsDragMoved) {
+    suppressNextSettingsClick = true
+    setTimeout(() => { suppressNextSettingsClick = false }, 100)
+  }
+}
+
+function onSettingsClick(ev: MouseEvent) {
+  // If a drag just occurred, suppress opening
+  if (isDraggingSettings.value || suppressNextSettingsClick) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    return
+  }
+  openSettings()
 }
 </script>
 
@@ -1335,7 +1479,6 @@ button[disabled] {
   border-radius: 50% 50% 0 0;
   transform: translateX(-50%);
   border: 2px solid var(--border);
-  border-bottom: none;
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   color: var(--muted);
   font-size: 2rem;
@@ -1346,12 +1489,44 @@ button[disabled] {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  touch-action: none;
+  user-select: none;
 }
 
 .settings-button:hover {
   background: var(--surface);
   color: var(--text);
   transform: translateX(-50%);
+}
+
+.settings-button.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+/* Edge-specific shapes */
+.settings-button.edge-bottom {
+  border-radius: 50% 50% 0 0;
+  border-bottom-width: 0px;
+}
+
+.settings-button.edge-top {
+  border-radius: 0 0 50% 50%;
+  border-top-width: 0px;
+}
+
+.settings-button.edge-left {
+  border-radius: 0 50% 50% 0;
+  border-left-width: 0px;
+}
+
+.settings-button.edge-right {
+  border-radius: 50% 0 0 50%;
+  border-right-width: 0px;
+}
+
+.settings-button.dragging {
+  transition: none;
 }
 
 /* Modal transition animations */
