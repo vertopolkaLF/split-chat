@@ -15,6 +15,7 @@
           <div class="welcome-section">
             <div class="welcome-section-header">
               <h1>Welcome to SplitChat</h1>
+              <p>Multi-Platform Live Streaming Chat Viewer</p>
               <a target="_blank" href="https://github.com/vertopolkaLF/split-chat" class="github-link">
                 <Icon name="mdi:github" />
                 <span>GitHub</span>
