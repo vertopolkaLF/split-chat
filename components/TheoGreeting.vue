@@ -155,7 +155,7 @@ function applyTheoPreset() {
     position: fixed;
     bottom: 0px;
     right: 0px;
-    z-index: 1001;
+    z-index: 1000001;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
