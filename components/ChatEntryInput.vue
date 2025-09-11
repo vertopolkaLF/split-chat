@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useNuxtApp } from '#app'
 
 type Platform = 'twitch' | 'youtube' | 'kick'
 type Mode = 'auto' | 'manual'
@@ -58,6 +59,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: ChatEntry): void, (e:
 
 const local = reactive<ChatEntry>({ ...props.modelValue })
 watch(() => props.modelValue, (v) => Object.assign(local, v), { deep: true })
+const { $posthog } = useNuxtApp()
 
 function emitUpdate() {
     emit('update:modelValue', { ...local, parsed: { ...local.parsed } })
@@ -285,6 +287,21 @@ function onSave() {
     pickerOpen.value = false
     local.locked = true
     emitUpdate()
+    try {
+        const identifier = (local.parsed?.channel
+            || local.parsed?.handle
+            || local.parsed?.vanity
+            || local.parsed?.channelId
+            || local.parsed?.videoId
+            || local.input) as string | undefined
+        const ph = typeof $posthog === 'function' ? $posthog() : null
+        ph?.capture('chat_configured', {
+            id: local.id,
+            platform: local.platform,
+            mode: local.mode,
+            identifier
+        })
+    } catch { }
 }
 
 function onEdit() {

@@ -91,11 +91,15 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useColorMode, useHead } from '#imports'
+import { useNuxtApp } from '#app'
 import SettingsModal from '../components/SettingsModal.vue'
 import ChatCard from '../components/ChatCard.vue'
 import TheoGreeting from '../components/TheoGreeting.vue'
 import { applyPresetToLocalStorage } from '../presets'
 const colorMode = useColorMode()
+const { $posthog } = useNuxtApp()
+
+
 
 // Dynamic SEO and meta tags
 useHead({
@@ -297,6 +301,10 @@ const isResizing = computed(() => !!resizing.value)
 function openSettings() {
   showSettings.value = true
   isSettingsOpen.value = true
+  try {
+    const ph = typeof $posthog === 'function' ? $posthog() : null
+    ph?.capture('settings_opened')
+  } catch { }
 }
 
 function closeSettings() {

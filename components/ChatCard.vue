@@ -14,7 +14,7 @@
                     <div class="username">{{ displayUsername }}</div>
                 </div>
                 <div class="placeholder-text">there will be {{ displayUsername }}'s chat</div>
-                <button class="reload-btn" @click="emit('reload', entry)" :disabled="reloading" :title="reloading ? 'Loading...' : 'Refresh chat'">
+                <button class="reload-btn" @click="onReloadClick" :disabled="reloading" :title="reloading ? 'Loading...' : 'Refresh chat'">
                     <Icon name="material-symbols:refresh" :class="{ spinning: reloading }" />
                     <span>{{ reloading ? 'Loading...' : 'Refresh' }}</span>
                 </button>
@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { toRefs, computed } from 'vue'
+import { useNuxtApp } from '#app'
 interface ChatEntry { id: string; platform: string | null }
 interface Embed { url: string; title: string }
 
@@ -56,11 +57,21 @@ const emit = defineEmits<{
     (e: 'equalizeWidths'): void
 }>()
 
+const { $posthog } = useNuxtApp()
+
 const usernameClass = computed(() => {
     const platform = entry.value.platform
     if (platform === 'youtube') return 'yt'
     return 'default'
 })
+
+function onReloadClick() {
+    try {
+        const ph = typeof $posthog === 'function' ? $posthog() : null
+        ph?.capture('chat_reloaded', { id: entry.value.id, platform: entry.value.platform })
+    } catch { }
+    emit('reload', entry.value)
+}
 </script>
 
 <style scoped>

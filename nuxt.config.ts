@@ -4,7 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   runtimeConfig: {
-    youtubeApiKey: process.env.YT_API_KEY
+    youtubeApiKey: process.env.YT_API_KEY,
+    public: {
+      posthogPublicKey: process.env.NUXT_PUBLIC_POSTHOG_KEY,
+      posthogHost: process.env.NUXT_PUBLIC_POSTHOG_HOST || 'https://eu.i.posthog.com',
+      posthogDefaults: process.env.NUXT_PUBLIC_POSTHOG_DEFAULTS || '2025-05-24'
+    }
   },
 
   modules: [
@@ -13,6 +18,8 @@ export default defineNuxtConfig({
     '@nuxt/fonts',
     '@formkit/auto-animate'
   ],
+
+  // Rely on auto-loaded plugins in `app/plugins`
 
   colorMode: {
     preference: 'system',
